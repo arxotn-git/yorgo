@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>N배송(아르고) 재고현황 (v1)</title>
+    <title>N배송(아르고) 재고현황 (v2)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -36,7 +36,7 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
-        const APP_VERSION = 1; 
+        const APP_VERSION = 2; 
         const SECRET_PASSWORD = "0319"; 
 
         // 파이어베이스 셋팅 (깃허브 연동 기반)
@@ -77,7 +77,7 @@
             return sku.replace(/^요미몬\s+/, "").trim();
         };
 
-        // --- 초기 기본 데이터 전체 복구 (5월 11일 ~ 6월 2일) ---
+        // --- 초기 기본 데이터 ---
         const INITIAL_DATES = [
             "2026-05-11", "2026-05-12", "2026-05-13", "2026-05-14", "2026-05-15",
             "2026-05-18", "2026-05-19", "2026-05-20", "2026-05-21", "2026-05-22",
@@ -182,8 +182,10 @@
         }
 
         function App() {
-            // 🔒 SECURITY STATE
-            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            // 🔒 SECURITY STATE (Session Storage 유지)
+            const [isLoggedIn, setIsLoggedIn] = useState(() => {
+                return sessionStorage.getItem("isLoggedIn") === "true";
+            });
             const [pwdInput, setPwdInput] = useState("");
             const [loginError, setLoginError] = useState(false);
 
@@ -199,6 +201,11 @@
             // ROCKET Data
             const [rocketDates, setRocketDates] = useState(INITIAL_ROCKET_DATES);
             const [rocketData, setRocketData] = useState(INITIAL_ROCKET_DATA);
+
+            // ROCKET VIEW: 최근 14일만 렌더링하도록 필터링
+            const visibleRocketDates = useMemo(() => {
+                return rocketDates.slice(-14);
+            }, [rocketDates]);
 
             // Filtering configuration
             const availableMonths = useMemo(() => {
@@ -241,8 +248,13 @@
 
             const handleLogin = (e) => {
                 e.preventDefault();
-                if (pwdInput === SECRET_PASSWORD) setIsLoggedIn(true);
-                else { setLoginError(true); setPwdInput(""); }
+                if (pwdInput === SECRET_PASSWORD) {
+                    setIsLoggedIn(true);
+                    sessionStorage.setItem("isLoggedIn", "true");
+                } else { 
+                    setLoginError(true); 
+                    setPwdInput(""); 
+                }
             };
 
             // Firebase Snapshot sync & Auto-Upgrade Logic
@@ -421,23 +433,37 @@
                         let newArgoData = { ...dbStockData };
                         let newIncomings = [...dbIncomings];
 
+                        // 📅 스마트 날짜 포맷 변환기 (어떤 엑셀 형식이든 YYYY-MM-DD 통일)
+                        const formatExcelDate = (rawLabel) => {
+                            let lbl = String(rawLabel).replace(/\n/g, ' ').trim();
+                            let datePart = lbl.split(/\s|\(/)[0].trim(); 
+                            
+                            let suffixMatch = lbl.match(/(\s*\(.*?\))/); 
+                            let suffix = suffixMatch ? suffixMatch[1] : "";
+                            
+                            if (!datePart.match(/\d/)) return null;
+
+                            let parts = datePart.split(/[\/\-]/);
+                            if (parts.length >= 3) {
+                                return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}${suffix}`;
+                            } else if (parts.length === 2) {
+                                return `2026-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}${suffix}`;
+                            }
+                            return null;
+                        };
+
                         // 1. ROCKET SHEET PARSING (Index 0)
                         try {
                             const sRocket = workbook.Sheets["로켓"] || workbook.Sheets[workbook.SheetNames[0]];
                             if(sRocket) {
-                                const rRows = XLSX.utils.sheet_to_json(sRocket, { header: 1 });
+                                const rRows = XLSX.utils.sheet_to_json(sRocket, { header: 1, raw: false });
                                 if(rRows.length > 1) {
                                     const hRow = rRows[0];
                                     const dCols = []; let sIdx = 0;
+                                    
                                     hRow.forEach((c, i) => {
-                                        if(c && (String(c).match(/^\d+[\/\-]\d+/) || String(c).startsWith('202'))) {
-                                            let lbl = String(c).trim();
-                                            if (!lbl.startsWith("202")) {
-                                                let [m, d] = lbl.split(/[\/\-]/);
-                                                if (m && d) lbl = `2026-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-                                            }
-                                            dCols.push({ index: i, label: lbl });
-                                        }
+                                        const formattedDate = formatExcelDate(c);
+                                        if (formattedDate) dCols.push({ index: i, label: formattedDate });
                                     });
                                     
                                     const parsedDates = dCols.map(c => c.label);
@@ -472,29 +498,19 @@
                         try {
                             const sArgo = workbook.Sheets["N배송"] || workbook.Sheets[workbook.SheetNames[1]];
                             if(sArgo) {
-                                const aRows = XLSX.utils.sheet_to_json(sArgo, { header: 1 });
+                                const aRows = XLSX.utils.sheet_to_json(sArgo, { header: 1, raw: false });
                                 if(aRows.length > 1) {
                                     const hRow = aRows[0];
                                     const dCols = []; let sIdx = 0;
+                                    
                                     hRow.forEach((c, i) => {
-                                        if(c && (String(c).match(/^\d+[\/\-]\d+/) || String(c).startsWith('202'))) {
-                                            let lbl = String(c).trim();
-                                            if (!lbl.startsWith("202")) {
-                                                let [m, d] = lbl.split(/[\/\-]/);
-                                                if (m && d) {
-                                                    let suffix = "";
-                                                    if (d.includes(" (2)")) { suffix = " (2)"; d = d.replace(" (2)", "").trim(); }
-                                                    lbl = `2026-${m.padStart(2, '0')}-${d.padStart(2, '0')}${suffix}`;
-                                                }
-                                            }
-                                            dCols.push({ index: i, label: lbl });
-                                        }
+                                        const formattedDate = formatExcelDate(c);
+                                        if (formattedDate) dCols.push({ index: i, label: formattedDate });
                                     });
                                     
                                     const parsedDates = dCols.map(c => c.label);
                                     newArgoDates = Array.from(new Set([...dbDates, ...parsedDates])).sort();
 
-                                    // Resize existing argo arrays
                                     Object.keys(newArgoData).forEach(k => {
                                         newArgoData[k] = newArgoDates.map(d => {
                                             const oldI = dbDates.indexOf(d);
@@ -523,15 +539,19 @@
                         try {
                             const sDisp = workbook.Sheets["아르고발송"] || workbook.Sheets[workbook.SheetNames[2]];
                             if(sDisp) {
-                                const dRows = XLSX.utils.sheet_to_json(sDisp, { header: 1 });
+                                const dRows = XLSX.utils.sheet_to_json(sDisp, { header: 1, raw: false });
                                 if(dRows.length > 1) {
                                     const hRow = dRows[0];
                                     const dCols = []; let sIdx = 0;
+                                    
                                     hRow.forEach((c, i) => {
-                                        if(c && (String(c).match(/^\d+[\/\-]\d+/) || String(c).startsWith('202'))) {
-                                            dCols.push({ index: i, label: String(c).trim() });
-                                        }
+                                        const formattedDate = formatExcelDate(c);
+                                        if (formattedDate) dCols.push({ index: i, label: formattedDate });
                                     });
+
+                                    // ⚠️ 미입고 쏟아짐 방지 로직: 최신 재고 기준일로부터 10일 전 데이터는 자동 입고(true) 처리
+                                    const latestArgoDateStr = newArgoDates[newArgoDates.length - 1] || "2026-06-02";
+                                    const cutoffTime = new Date(latestArgoDateStr.split(' ')[0]).getTime() - (10 * 24 * 60 * 60 * 1000);
 
                                     for(let i=1; i<dRows.length; i++) {
                                         const row = dRows[i];
@@ -542,14 +562,13 @@
                                             const amount = parseInt(row[col.index]) || 0;
                                             if(amount > 0) {
                                                 let type = col.label.includes("용차") ? "용차" : "택배";
-                                                let cleanDate = col.label.split(' ')[0].split('(')[0];
-                                                if (!cleanDate.startsWith("2026-")) {
-                                                    let [m, d] = cleanDate.split(/[\/\-]/);
-                                                    if (m && d) cleanDate = `2026-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-                                                }
+                                                let cleanDate = col.label.split(' ')[0]; // 날짜만 추출
+                                                
+                                                const dispatchTime = new Date(cleanDate).getTime();
+                                                const isAlreadyArrived = dispatchTime < cutoffTime; // 오래된 내역 필터링
 
                                                 if(!newIncomings.some(inc => inc.sku === sku && inc.date === cleanDate && inc.amount === amount)) {
-                                                    newIncomings.push({ sku, date: cleanDate, amount, type, isRegistered: false });
+                                                    newIncomings.push({ sku, date: cleanDate, amount, type, isRegistered: isAlreadyArrived });
                                                 }
                                             }
                                         });
@@ -622,7 +641,7 @@
                             <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
                                 <div className="text-center md:text-left">
                                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-                                        <h1 className="text-2xl font-bold tracking-tight">N배송(아르고) 재고현황 <span className="text-indigo-400 font-extrabold">(v1)</span></h1>
+                                        <h1 className="text-2xl font-bold tracking-tight">N배송(아르고) 재고현황 <span className="text-indigo-400 font-extrabold">(v2)</span></h1>
                                         {cloudSync === "github" ? <span className="text-xs bg-emerald-600/50 text-emerald-100 px-2.5 py-0.5 rounded-full font-bold">✅ 깃허브 실시간 연동 정상</span> 
                                         : cloudSync === "synced" ? <span className="text-xs bg-emerald-600/50 text-emerald-100 px-2.5 py-0.5 rounded-full font-bold">☁️ 실시간 연동 완료</span> 
                                         : <span className="text-xs bg-indigo-600/50 text-indigo-100 px-2.5 py-0.5 rounded-full font-bold animate-pulse">☁️ 연결 중...</span>}
@@ -665,26 +684,30 @@
                         <main className="flex-grow w-full max-w-full px-6 md:px-10 py-8 bg-slate-50 animate-fade-in">
                             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
                                 <div className="p-6 border-b border-slate-100 bg-blue-50/30">
-                                    <h2 className="font-extrabold text-slate-800 text-xl flex items-center gap-2">🚀 로켓배송 전용 실시간 재고 상황판</h2>
-                                    <p className="text-sm text-slate-500 mt-1">엑셀 첫 번째 시트의 원본 데이터가 날짜별로 표시됩니다.</p>
+                                    <h2 className="font-extrabold text-slate-800 text-xl flex items-center gap-2">🚀 로켓배송 실시간 재고 상황판</h2>
+                                    <p className="text-sm text-slate-500 mt-1">엑셀 데이터 중 최근 14일 치 기록만 압축하여 보여줍니다.</p>
                                 </div>
                                 <div className="overflow-x-auto p-6">
                                     <table className="w-full text-left border-collapse border border-slate-200 rounded-xl">
                                         <thead>
                                             <tr className="bg-slate-100 text-slate-600 text-sm font-bold uppercase">
                                                 <th className="py-4 px-6 border-b border-slate-200 bg-slate-100 sticky left-0 z-10 shadow-[1px_0_0_#e2e8f0]">품목명 (SKU)</th>
-                                                {rocketDates.map(d => <th key={d} className="py-4 px-6 border-b border-slate-200 text-center whitespace-nowrap">{d.substring(5)}</th>)}
+                                                {visibleRocketDates.map(d => <th key={d} className="py-4 px-6 border-b border-slate-200 text-center whitespace-nowrap">{d.substring(5)}</th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 text-sm">
                                             {Object.keys(rocketData).map((sku, idx) => (
                                                 <tr key={sku} className="hover:bg-blue-50/40 transition-colors">
                                                     <td className="py-4 px-6 font-extrabold text-slate-800 bg-white sticky left-0 z-10 shadow-[1px_0_0_#f1f5f9] whitespace-nowrap">{sku}</td>
-                                                    {rocketData[sku].map((val, i) => (
-                                                        <td key={i} className={`py-4 px-6 text-center font-bold ${val === "-" ? "text-slate-300" : val == 0 ? "text-red-500" : "text-slate-700"}`}>
-                                                            {val !== "-" ? Number(val).toLocaleString() : "-"}
-                                                        </td>
-                                                    ))}
+                                                    {visibleRocketDates.map((d, i) => {
+                                                        const dateIdx = rocketDates.indexOf(d);
+                                                        const val = rocketData[sku][dateIdx];
+                                                        return (
+                                                            <td key={i} className={`py-4 px-6 text-center font-bold ${val === "-" || val === undefined ? "text-slate-300" : val == 0 ? "text-red-500" : "text-slate-700"}`}>
+                                                                {val !== "-" && val !== undefined ? Number(val).toLocaleString() : "-"}
+                                                            </td>
+                                                        );
+                                                    })}
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -707,7 +730,7 @@
                                     </div>
                                     {pendingDispatches.length > 0 && (
                                         <span className="text-xs font-bold text-orange-800 bg-white px-3.5 py-1.5 rounded-xl border border-orange-200">
-                                            총 {pendingDispatches.length}건 대기 중
+                                            최근 출고 총 {pendingDispatches.length}건 대기 중
                                         </span>
                                     )}
                                 </div>
