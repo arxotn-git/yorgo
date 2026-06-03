@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>N배송(아르고) 재고현황 (v8)</title>
+    <title>N배송 & 로켓배송 재고 현황 (v15)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -25,17 +25,33 @@
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         .tab-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         
-        /* 틀고정(Freeze Panes)을 위한 CSS 강제 정렬 */
+        /* 🚀 가로 스크롤 & 틀고정 CSS 완벽 적용 */
         .freeze-table-container {
             max-height: 700px;
             overflow: auto;
             position: relative;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
         }
-        .freeze-header {
+        .freeze-table-container::-webkit-scrollbar { height: 12px; width: 10px; }
+        .freeze-table-container::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 8px; }
+        .freeze-table-container::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 2px solid #e2e8f0; }
+        .freeze-table-container::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .freeze-header th {
             position: sticky;
             top: 0;
             z-index: 40;
             background-color: #f1f5f9;
+        }
+
+        /* 🚀 로켓 테이블 고정 열 너비 변수 (폭 대폭 축소) */
+        :root {
+            --col-name: 130px;
+            --col-opt:  140px;
+            --col-sku:  110px;
+            --col-left1: 130px;              /* 상품명 끝 */
+            --col-left2: 270px;              /* 상품명+구성 끝 */
         }
     </style>
 </head>
@@ -46,7 +62,7 @@
         const { useState, useMemo, useEffect, useRef } = React;
 
         const SECRET_PASSWORD = "0319"; 
-        const LS_KEY = "argo_dashboard_master_v8";
+        const LS_KEY = "argo_dashboard_master_v15";
 
         // --- 공통 유틸리티 ---
         const cleanDate = (s) => {
@@ -64,98 +80,44 @@
             "저자극 샤워타월": "기타", "와우펜(1개)": "와우펜", "쇼핑백(중)": "기타", "유니버스 VIP 멤버십 1년 이용권": "기타"
         };
 
-        const INIT_DATES = [
-            "2026-05-11","2026-05-12","2026-05-13","2026-05-14","2026-05-15",
-            "2026-05-18","2026-05-19","2026-05-20","2026-05-21","2026-05-22",
-            "2026-05-26","2026-05-27","2026-05-28","2026-05-29","2026-05-29 (2)",
-            "2026-06-01","2026-06-02"
-        ];
-
-        const INIT_STOCK = {
-            "플레이돌": [99,95,95,93,92,88,88,88,86,86,82,81,79,79,79,79,78],
-            "플레이돌 맥스": [63,62,58,55,53,46,43,42,36,35,28,26,24,20,20,76,72],
-            "키즈탭 프로": [54,52,51,51,51,50,50,49,48,48,44,43,43,41,41,40,40],
-            "키즈탭 프로 디즈니 확장패키지": [52,50,48,47,47,45,45,45,43,41,40,40,39,39,39,38,36],
-            "안심클레이 10종팩": [116,107,100,210,202,185,177,163,138,129,106,95,78,75,74,348,336],
-            "안심클레이 15종팩": [102,100,191,182,179,167,160,152,146,137,119,114,108,108,107,94,92],
-            "클레이 도구박스(트레이포함)": [34,31,87,83,80,66,66,62,48,40,82,77,67,67,64,108,102],
-            "사운드차트 3종 패키지": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-            "와우펜(3개입)": [276,272,270,270,268,257,256,250,249,245,233,228,223,190,186,162,156],
-            "와우펜북-한글": [35,34,34,34,34,32,32,32,32,32,30,30,30,29,29,28,28],
-            "와우펜북-숫자": [41,41,41,41,41,40,40,40,40,39,38,38,38,38,38,36,35],
-            "와우펜북-미술": [70,70,69,68,68,66,66,66,66,63,60,59,59,54,54,46,45],
-            "멀티보드": [210,199,193,189,184,173,171,164,159,156,144,137,134,132,132,127,124],
-            "똑똑한 낱말카드": [170,167,163,165,159,151,149,147,145,143,139,138,133,130,130,124,122],
-            "키즈 무선마이크": [252,248,241,239,237,230,229,225,222,221,215,213,210,210,210,204,199],
-            "제로비누": [616,602,588,574,569,548,540,534,503,499,466,461,447,437,437,412,402],
-            "저자극 샤워타월": [182,171,163,153,148,140,136,131,129,123,103,94,79,71,71,577,574],
-            "와우펜(1개)": [65,51,43,435,424,401,397,385,376,364,345,326,324,318,318,308,305],
-            "쇼핑백(중)": [571,562,555,549,544,530,527,525,514,509,493,489,484,476,476,470,463],
-            "유니버스 VIP 멤버십 1년 이용권": [139,135,135,134,132,128,128,128,126,126,122,121,119,119,119,119,118]
-        };
-
-        const INIT_INC = [
-            { sku:"안심클레이 10종팩", date:"2026-05-14", amount:120, type:"택배", isRegistered:true },
-            { sku:"안심클레이 15종팩", date:"2026-05-13", amount:100, type:"용차", isRegistered:true },
-            { sku:"클레이 도구박스(트레이포함)", date:"2026-05-13", amount:60, type:"택배", isRegistered:true },
-            { sku:"와우펜(1개)", date:"2026-05-14", amount:400, type:"택배", isRegistered:true },
-            { sku:"클레이 도구박스(트레이포함)", date:"2026-05-26", amount:50, type:"택배", isRegistered:true },
-            { sku:"플레이돌 맥스", date:"2026-05-29", amount:60, type:"용차", isRegistered:true },
-            { sku:"클레이 도구박스(트레이포함)", date:"2026-05-29", amount:60, type:"용차", isRegistered:true },
-            { sku:"안심클레이 10종팩", date:"2026-05-29", amount:288, type:"용차", isRegistered:true },
-            { sku:"저자극 샤워타월", date:"2026-05-29", amount:528, type:"용차", isRegistered:true }
-        ];
-
-        const parseDate = (cell) => {
+        // 🚀 역방향 연도 추적을 위한 단위 파서
+        const parseCellToParts = (cell) => {
             if (cell == null || cell === "") return null;
             if (cell instanceof Date) {
                 if (isNaN(cell.getTime())) return null;
-                return `${cell.getFullYear()}-${String(cell.getMonth()+1).padStart(2,'0')}-${String(cell.getDate()).padStart(2,'0')}`;
+                return { y: cell.getFullYear(), m: cell.getMonth()+1, d: cell.getDate(), suffix: "" };
             }
             const s = String(cell).trim();
             if (!s) return null;
             
-            // Excel 직렬 번호 (순수 숫자)
             if (/^\d+$/.test(s)) {
                 const n = Number(s);
                 if (n > 40000 && n < 60000) {
                     const d = new Date(Math.round((n-25569)*86400000));
-                    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    return { y: d.getFullYear(), m: d.getMonth()+1, d: d.getDate(), suffix: "" };
                 }
                 return null;
             }
             
-            // 한글 날짜: "2026년 5월 14일"
             const km = s.match(/(\d{2,4})년\s*(\d{1,2})월\s*(\d{1,2})일?/);
             if (km) {
-                const y = km[1].length===2 ? `20${km[1]}` : km[1];
-                return `${y}-${km[2].padStart(2,'0')}-${km[3].padStart(2,'0')}`;
+                const y = km[1].length === 2 ? 2000+parseInt(km[1]) : parseInt(km[1]);
+                return { y, m: parseInt(km[2]), d: parseInt(km[3]), suffix: "" };
             }
             
-            // YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD (suffix 허용)
             const m4 = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})(\s*[\(\[].+)?$/);
             if (m4) {
-                const base = `${m4[1]}-${m4[2].padStart(2,'0')}-${m4[3].padStart(2,'0')}`;
-                const sfx = m4[4]?.trim() ? " "+m4[4].trim() : "";
-                return base+sfx;
+                return { y: parseInt(m4[1]), m: parseInt(m4[2]), d: parseInt(m4[3]), suffix: m4[4]?.trim() ? " "+m4[4].trim() : "" };
             }
             
-            // YY/MM/DD, YY-MM-DD
             const m3 = s.match(/^(\d{2})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})(\s*[\(\[].+)?$/);
             if (m3) {
-                const base = `20${m3[1]}-${m3[2].padStart(2,'0')}-${m3[3].padStart(2,'0')}`;
-                const sfx = m3[4]?.trim() ? " "+m3[4].trim() : "";
-                return base+sfx;
+                return { y: 2000+parseInt(m3[1]), m: parseInt(m3[2]), d: parseInt(m3[3]), suffix: m3[4]?.trim() ? " "+m3[4].trim() : "" };
             }
             
-            // MM/DD 또는 MM-DD (suffix 허용)
             const m2 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})(\s*[\(\[].+)?$/);
             if (m2) {
-                const mo = parseInt(m2[1]);
-                const y = mo > 8 ? "2025" : "2026";
-                const base = `${y}-${m2[1].padStart(2,'0')}-${m2[2].padStart(2,'0')}`;
-                const sfx = m2[3]?.trim() ? " "+m2[3].trim() : "";
-                return base+sfx;
+                return { y: null, m: parseInt(m2[1]), d: parseInt(m2[2]), suffix: m2[3]?.trim() ? " "+m2[3].trim() : "" };
             }
             return null;
         };
@@ -165,16 +127,17 @@
             for (let r=0; r<Math.min(6,rows.length); r++) {
                 const row=rows[r]||[];
                 let cnt=0;
-                row.forEach((c,i)=>{ if(i>=skipCols && parseDate(c)) cnt++; });
+                row.forEach((c,i)=>{ if(i>=skipCols && parseCellToParts(c)) cnt++; });
                 if(cnt>bestCount){bestCount=cnt;best=r;}
             }
             return bestCount>0 ? best : 0;
         };
 
-        function DD({ label, value, options, onChange }) {
+        // --- CUSTOM DROPDOWN COMPONENT ---
+        function Dropdown({ label, value, options, onChange }) {
             const [open, setOpen] = useState(false);
             const ref = useRef(null);
-            const sel = useMemo(() => options.find(o => o.value === value) || options[0], [options, value]);
+            const sel = useMemo(() => options.find(o => String(o.value) === String(value)) || options[0], [options, value]);
             
             useEffect(() => {
                 const h = e => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -195,8 +158,8 @@
                             <div className="absolute right-0 mt-2 w-52 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1 z-[999] max-h-64 overflow-y-auto">
                                 {options.map(opt => (
                                     <button key={String(opt.value)} type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
-                                        className={`w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center justify-between border-b border-slate-800/40 last:border-0 ${opt.value === value ? "bg-indigo-600/30 text-indigo-300 border-l-4 border-indigo-500" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
-                                        <span>{opt.label}</span>{opt.value === value && <span>✓</span>}
+                                        className={`w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center justify-between border-b border-slate-800/40 last:border-0 ${String(opt.value) === String(value) ? "bg-indigo-600/30 text-indigo-300 border-l-4 border-indigo-500" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
+                                        <span>{opt.label}</span>{String(opt.value) === String(value) && <span>✓</span>}
                                     </button>
                                 ))}
                             </div>
@@ -206,20 +169,20 @@
             );
         }
 
+        // --- MAIN APP COMPONENT ---
         function App() {
             const [loggedIn, setLoggedIn] = useState(() => sessionStorage.getItem("ili") === "1");
             const [pwd, setPwd] = useState(""); 
             const [pwdErr, setPwdErr] = useState(false);
-            const [view, setView] = useState("argo");
+            const [view, setView] = useState("argo"); // 🚀 기본화면 N배송 원상복구
             const [notif, setNotif] = useState(null);
 
-            const [dbDates, setDbDates] = useState(INIT_DATES);
-            const [dbStock, setDbStock] = useState(INIT_STOCK);
-            const [dbInc, setDbInc] = useState(INIT_INC);
+            const [dbDates, setDbDates] = useState([]);
+            const [dbStock, setDbStock] = useState({});
+            const [dbInc, setDbInc] = useState([]);
             const [rDates, setRDates] = useState([]);
             const [rItems, setRItems] = useState([]);
 
-            // ── 로컬 스토리지 데이터 무손실 복원 ──
             useEffect(() => {
                 try {
                     const raw = localStorage.getItem(LS_KEY);
@@ -244,14 +207,14 @@
             };
 
             // ── N배송 필터 상태 ──
-            const aYears = useMemo(()=>[...new Set(dbDates.map(d=>d.slice(0,4)))].sort().reverse(),[dbDates]);
+            const aYears = useMemo(()=>dbDates.length ? [...new Set(dbDates.map(d=>d.slice(0,4)))].sort().reverse() : ["2026"],[dbDates]);
             const [aY, setAY] = useState(()=>aYears[0]||"2026");
             
-            const aMons = useMemo(()=>[...new Set(dbDates.filter(d=>d.startsWith(aY)).map(d=>d.slice(5,7)))].sort().reverse(),[dbDates,aY]);
+            const aMons = useMemo(()=>dbDates.length ? [...new Set(dbDates.filter(d=>d.startsWith(aY)).map(d=>d.slice(5,7)))].sort().reverse() : ["06"],[dbDates,aY]);
             const [aM, setAM] = useState(()=>aMons[0]||"06");
             
             const aDatesM = useMemo(()=>[...dbDates.filter(d=>d.startsWith(`${aY}-${aM}`))].reverse(),[dbDates,aY,aM]);
-            const [aD, setAD] = useState(()=>aDatesM[0]||"");
+            const [aD, setAD] = useState("");
             
             useEffect(()=>{ if(!aYears.includes(aY)) setAY(aYears[0]); },[aYears]);
             useEffect(()=>{ if(!aMons.includes(aM)) setAM(aMons[0]); },[aY,aMons]);
@@ -259,7 +222,7 @@
 
             // ── 로켓 필터 상태 ──
             const [rMode, setRMode] = useState("15");
-            const [rShowZero, setRShowZero] = useState(false); // 🚀 기본값: 재고0 제외 (체크 해제됨)
+            const [rShowZero, setRShowZero] = useState(false); // 재고0 무조건 숨김(기본값)
             
             const rYears = useMemo(()=> rDates.length ? [...new Set(rDates.map(d=>d.slice(0,4)))].sort().reverse() : ["2026"],[rDates]);
             const [rY, setRY] = useState(()=>rYears[0]||"2026");
@@ -270,28 +233,16 @@
             useEffect(()=>{ if(!rYears.includes(rY)) setRY(rYears[0]); },[rYears]);
             useEffect(()=>{ if(!rMons.includes(rM)) setRM(rMons[0]); },[rY,rMons]);
 
-            const nowYM = useMemo(()=>{ const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`; },[]);
-            const lastYM = useMemo(()=>{ const n=new Date(); const l=new Date(n.getFullYear(),n.getMonth()-1,1); return `${l.getFullYear()}-${String(l.getMonth()+1).padStart(2,'0')}`; },[]);
-
             const visRD = useMemo(()=>{
                 if(!rDates.length) return [];
                 if(rMode === "15") return rDates.slice(-15);
                 if(rMode === "30") return rDates.slice(-30);
-                if(rMode === "THIS") return rDates.filter(d=>d.startsWith(nowYM));
-                if(rMode === "LAST") return rDates.filter(d=>d.startsWith(lastYM));
                 return rDates.filter(d=>d.startsWith(`${rY}-${rM}`));
-            }, [rDates, rMode, rY, rM, nowYM, lastYM]);
+            }, [rDates, rMode, rY, rM]);
 
-            // 🚀 로켓배송 "요미몬" 및 "재고 0개" 필터 엔진
+            // 로켓 아이템 필터 (30일 연속 재고0 숨김)
             const filtRI = useMemo(()=>{
                 return rItems.filter(item => {
-                    // 1. 요미몬 상품만 표시 (이름에 요미몬이 포함되어 있거나, 카테고리에 속한 경우)
-                    const origName = String(item.name);
-                    const cleaned = cleanSku(origName);
-                    const isYomimon = origName.includes("요미몬") || Object.keys(CATS).includes(cleaned);
-                    if (!isYomimon) return false;
-
-                    // 2. 재고 0개 제외 옵션 (체크 안되어 있으면 재고 0개는 숨김)
                     if (!rShowZero) {
                         const last30 = rDates.slice(-30);
                         const hasStock = last30.some(d => {
@@ -304,7 +255,7 @@
                 });
             }, [rItems, rDates, rShowZero]);
 
-            // ── N배송 ADS 계산 ──
+            // ── N배송 계산 ──
             const [adsW, setAdsW] = useState(4);
             const [only30, setOnly30] = useState(true);
             const [exZero, setExZero] = useState(true);
@@ -331,7 +282,6 @@
                     let present = false;
                     if(inc.isRegistered){
                         present = true;
-                        // 물리적 반영 확인: 출고되었는데 재고가 충분히 안 올랐다면 아직 반영 전
                         if(dt>sDt && dt<=tDt && cur < inc.amount*0.8 && delta>=0) present = false;
                     }
                     if(present) { if(dt>sDt && dt<=tDt) wi+=inc.amount; }
@@ -367,13 +317,12 @@
                 return true;
             }).sort((a,b)=>a.daysRemaining-b.daysRemaining), [allSkus,only30,exZero,srch,catF]);
 
-            // 미입고 대기현황 (7일 초과 자동 무시 도배방지)
             const pend = useMemo(()=>{
                 if(!dbDates.length) return [];
                 const lt = cleanDate(dbDates[dbDates.length-1]).getTime();
                 return dbInc.filter(i=>!i.isRegistered).map(i=>{
                     const dt = cleanDate(i.date).getTime();
-                    if((lt-dt)/86400000 > 7) return null; // 7일 이상 경과시 도배 방지용 무시
+                    if((lt-dt)/86400000 > 7) return null; 
                     const arr = cleanDate(i.date);
                     if(i.type==="택배") arr.setDate(arr.getDate()+3);
                     return {...i, arrDate:arr.toISOString().split('T')[0]};
@@ -402,40 +351,53 @@
                         const wb = XLSX.read(ev.target.result, { type:'binary', cellDates:true });
                         const sn = wb.SheetNames;
                         
-                        // 시트 스마트 서치 (이름이 달라도 포함된 키워드로 찾음)
-                        const sRocket = wb.Sheets[sn.find(n => n.includes("로켓")) || sn[0]];
-                        const sArgo   = wb.Sheets[sn.find(n => n.includes("N배송") && !n.includes("출고") && !n.includes("발송")) || sn[1]];
-                        const sDisp   = wb.Sheets[sn.find(n => n.includes("출고") || n.includes("발송")) || sn[2]];
+                        const sRocket = sn[0] ? wb.Sheets[sn[0]] : null;
+                        const sArgo   = sn[1] ? wb.Sheets[sn[1]] : null;
+                        const sDisp   = sn[2] ? wb.Sheets[sn[2]] : null;
 
                         let nRD=[...rDates], nRI=[...rItems];
                         let nAD=[...dbDates], nAS={...dbStock};
                         let nInc=[...dbInc];
 
-                        const parseSheet = (sheet, skipCols=0) => {
+                        // 🚀 역방향 연도 추적기
+                        const parseSheetWithTimeline = (sheet, skipCols=0) => {
                             if(!sheet) return null;
                             let rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:true, defval:""});
                             let hri = findHeaderRow(rows, skipCols);
-                            let dCols = [];
-                            (rows[hri]||[]).forEach((c,i)=>{
-                                if(i < skipCols) return;
-                                const fd = parseDate(c);
-                                if(fd) dCols.push({index:i, label:fd});
-                            });
-                            if(dCols.length===0){
+                            if (hri === 0 && rows.length > 0 && !rows[0].some((c,i) => i>=skipCols && parseCellToParts(c))) {
                                 rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:false, defval:""});
                                 hri = findHeaderRow(rows, skipCols);
-                                (rows[hri]||[]).forEach((c,i)=>{
-                                    if(i < skipCols) return;
-                                    const fd = parseDate(c);
-                                    if(fd) dCols.push({index:i, label:fd});
-                                });
+                            }
+                            
+                            let hRow = rows[hri] || [];
+                            let dCols = [];
+                            let currentYear = 2026; 
+                            let lastMonth = null;
+                            
+                            for(let i = hRow.length - 1; i >= skipCols; i--) {
+                                let cell = hRow[i];
+                                let p = parseCellToParts(cell);
+                                if(p) {
+                                    if(p.y) {
+                                        currentYear = p.y;
+                                        lastMonth = p.m;
+                                    } else {
+                                        if(lastMonth !== null) {
+                                            if(p.m > lastMonth && (p.m - lastMonth) > 5) currentYear--;
+                                            else if(lastMonth > p.m && (lastMonth - p.m) > 5) currentYear++;
+                                        }
+                                        lastMonth = p.m;
+                                    }
+                                    let dateStr = `${currentYear}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}${p.suffix}`;
+                                    dCols.unshift({ index: i, label: dateStr });
+                                }
                             }
                             return {rows, hri, dCols, parsedDates: dCols.map(c=>c.label)};
                         };
 
                         // ── 1. 로켓 시트 ──
                         if(sRocket){
-                            const p = parseSheet(sRocket, 3); 
+                            const p = parseSheetWithTimeline(sRocket, 3); 
                             if(p && p.dCols.length){
                                 const {rows, hri, dCols, parsedDates} = p;
                                 nRD = [...new Set([...rDates, ...parsedDates])].sort();
@@ -457,7 +419,10 @@
                                         const raw = row[col.index];
                                         let val = "-";
                                         if(raw !== "" && raw != null){
-                                            if(raw instanceof Date){ val = parseDate(raw) || "-"; }
+                                            if(raw instanceof Date){ 
+                                                const rawP = parseCellToParts(raw);
+                                                val = rawP ? `${rawP.y||2026}-${String(rawP.m).padStart(2,'0')}-${String(rawP.d).padStart(2,'0')}` : "-";
+                                            }
                                             else if(typeof raw==="number"){ val = Math.round(raw); }
                                             else{ const n=parseInt(String(raw).replace(/,/g,"")); val = isNaN(n)?String(raw):n; }
                                         }
@@ -470,7 +435,7 @@
 
                         // ── 2. N배송 재고 시트 ──
                         if(sArgo){
-                            const p = parseSheet(sArgo, 0); 
+                            const p = parseSheetWithTimeline(sArgo, 1); 
                             if(p && p.dCols.length){
                                 const {rows, hri, dCols, parsedDates} = p;
                                 nAD = [...new Set([...dbDates, ...parsedDates])].sort();
@@ -504,7 +469,7 @@
                         // ── 3. 출고 시트 ──
                         if(sDisp){
                             try {
-                                const p = parseSheet(sDisp, 0);
+                                const p = parseSheetWithTimeline(sDisp, 1);
                                 if(p && p.dCols.length){
                                     const {rows, hri, dCols} = p;
                                     const latestArgo = new Date((nAD[nAD.length-1]||"2026-06-02").split(" ")[0]).getTime();
@@ -517,7 +482,6 @@
                                         
                                         dCols.forEach(col=>{
                                             const dispTime = new Date(col.label.split(" ")[0]).getTime();
-                                            // 최신 재고 날짜 이전의 오래된 데이터는 무시
                                             if(dispTime <= latestArgo) return;
                                             
                                             const raw = row[col.index];
@@ -527,7 +491,6 @@
                                             const type = col.label.includes("용차") ? "용차" : "택배";
                                             const cleanD = col.label.split(" ")[0];
                                             
-                                            // 중복 체크
                                             if(!nInc.some(inc=>inc.sku===sku && inc.date===cleanD && inc.amount===amount)){
                                                 nInc.push({sku, date:cleanD, amount, type, isRegistered:false});
                                             }
@@ -548,7 +511,7 @@
                         if(nRD.length){
                             setRY(nRD[nRD.length-1].slice(0,4)); setRM(nRD[nRD.length-1].slice(5,7));
                         }
-                        notify("🎉 엑셀 1장으로 로켓/N배송 완벽 병합 완료!");
+                        notify("🎉 엑셀 분석 완료! 과거 연도까지 완벽하게 정렬되었습니다.");
                     } catch(err) {
                         console.error(err);
                         notify("엑셀 파일 파싱 오류. 파일 양식을 확인하세요.","err");
@@ -557,7 +520,6 @@
                 reader.readAsBinaryString(file);
             };
 
-            // 🚀 입고 완료처리 시 현재고에 즉시 더해주는 기능
             const toggleReg = idx => {
                 const t = pend[idx];
                 const upd = [...dbInc];
@@ -565,7 +527,6 @@
                 if(gi !== -1){
                     upd[gi] = {...upd[gi], isRegistered:true};
                     const us = {...dbStock};
-                    // 현재 선택된 조회 기준일(aD)의 인덱스를 찾아 현재고에 즉시 덧셈 반영
                     const curIdx = dbDates.indexOf(aD);
                     if(us[t.sku] && curIdx !== -1) {
                         us[t.sku][curIdx] += t.amount;
@@ -582,15 +543,14 @@
                 else{ setPwdErr(true); setPwd(""); }
             };
 
-            // ── 로그인 화면 (자동 포커스 적용) ──
             if(!loggedIn) return (
                 <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 relative overflow-hidden">
                     <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
                     <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl text-center relative z-10">
-                        <h1 className="text-2xl font-extrabold text-slate-800 mb-1">N배송(아르고) 재고현황</h1>
+                        <h1 className="text-2xl font-extrabold text-slate-800 mb-1">N배송 & 로켓배송 통합 재고</h1>
                         <p className="text-sm text-slate-500 mb-8">내부 인원 전용 대시보드입니다.</p>
                         <form onSubmit={handleLogin} className="space-y-4">
-                            <input type="password" value={pwd} onChange={e=>{setPwd(e.target.value);setPwdErr(false);}} placeholder="비밀번호 4자리 입력" autoFocus
+                            <input type="password" value={pwd} onChange={e=>{setPwd(e.target.value);setPwdErr(false);}} placeholder="비밀번호 입력" autoFocus
                                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-center font-bold outline-none focus:ring-2 focus:ring-indigo-500"/>
                             {pwdErr&&<p className="text-xs text-red-500 font-bold animate-bounce">⚠️ 비밀번호가 일치하지 않습니다.</p>}
                             <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-xl shadow-lg transition-colors">접속하기</button>
@@ -603,13 +563,13 @@
             // ── 메인 대시보드 ──
             return(
                 <div className="min-h-screen flex flex-col">
-                    {/* 공통 헤더 */}
                     <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                         <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                            <h1 className="text-2xl font-bold">N배송(아르고) 재고현황 <span className="text-indigo-400">(v8)</span></h1>
-                            <span className="text-xs bg-emerald-600/50 text-emerald-100 px-2.5 py-0.5 rounded-full font-bold">✅ 브라우저 로컬 저장소 가동중</span>
+                            <h1 className="text-2xl font-bold">N배송 & 로켓배송 통합 재고현황 <span className="text-indigo-400 font-extrabold">(v15)</span></h1>
+                            <span className="text-xs bg-emerald-600/50 text-emerald-100 px-2.5 py-0.5 rounded-full font-bold">✅ 오프라인 저장소 가동중</span>
                         </div>
                         <div className="flex gap-2 px-2 mt-0">
+                            {/* 🚀 원위치 복구 완료: N배송 ➡️ 로켓배송 순서 */}
                             <button onClick={()=>setView("argo")} className={`px-6 py-3 font-extrabold text-sm rounded-t-xl tab-btn ${view==="argo"? 'bg-slate-50 text-indigo-900 border-t-4 border-indigo-600' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white mt-1'}`}>
                                 📦 N배송(아르고) 재고
                             </button>
@@ -625,25 +585,23 @@
                         </div>
                     )}
 
-                    {/* ─── 로켓배송 전용 탭 ─────────────────────────────────────── */}
+                    {/* ─── 로켓배송 탭 ─────────────────────────────────────── */}
                     {view==="rocket"&&(
                         <main className="flex-grow w-full px-6 md:px-10 py-6 bg-slate-50 flex flex-col gap-6 animate-fade-in">
                             {rDates.length===0?(
                                 <div className="flex flex-col items-center justify-center py-28 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
                                     <span className="text-6xl mb-5">🚀</span>
                                     <h3 className="text-xl font-extrabold text-slate-600">로켓배송 데이터가 없습니다</h3>
-                                    <p className="text-sm text-slate-400 mt-2">아래 엑셀 업로드 영역에서 파일을 한 번만 던져주세요.</p>
+                                    <p className="text-sm text-slate-400 mt-2">하단 영역에 엑셀을 업로드 해주세요.</p>
                                 </div>
                             ):(
                                 <>
-                                    {/* 로켓 컨트롤 바 */}
                                     <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
                                         <h2 className="font-extrabold text-slate-800 text-xl px-2">
                                             🚀 로켓배송 실시간 상황판
-                                            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 요미몬 상품 표시</span>
+                                            <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품 표시</span>
                                         </h2>
                                         <div className="flex flex-wrap items-center gap-2">
-                                            {/* 🚀 재고 0개 체크박스 */}
                                             <label className="flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer select-none bg-slate-100 px-3 py-2 rounded-xl">
                                                 <input type="checkbox" checked={rShowZero} onChange={e=>setRShowZero(e.target.checked)} className="rounded border-slate-300 text-blue-600 w-4 h-4 cursor-pointer"/>
                                                 <span>👁️ 30일 연속 재고 0개 포함하기</span>
@@ -655,29 +613,36 @@
                                                 </button>
                                             ))}
                                             <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
-                                                <DD value={rY} options={rYears.map(y=>({value:y,label:`${y}년`}))} onChange={v=>{setRY(v);setRMode("MONTH");}}/>
+                                                <Dropdown value={rY} options={rYears.map(y=>({value:y,label:`${y}년`}))} onChange={v=>{setRY(v);setRMode("MONTH");}}/>
                                                 <div className="w-px h-6 bg-slate-700"/>
-                                                <DD value={rM} options={rMons.map(m=>({value:m,label:`${m}월`}))} onChange={v=>{setRM(v);setRMode("MONTH");}}/>
+                                                <Dropdown value={rM} options={rMons.map(m=>({value:m,label:`${m}월`}))} onChange={v=>{setRM(v);setRMode("MONTH");}}/>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* 로켓 테이블 (틀고정 추가) */}
-                                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden flex-grow freeze-table-container">
+                                    {/* 🚀 가로 스크롤 & 틀고정 테이블 */}
+                                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex-grow freeze-table-container">
                                         <div className="p-0">
                                             {filtRI.length===0?(
                                                 <div className="py-16 text-center">
-                                                    <p className="text-slate-400 text-sm">해당 조건에 맞는 로켓배송 상품 내역이 없습니다.</p>
+                                                    <p className="text-slate-400 text-sm">해당 조건에 맞는 상품이 없습니다.</p>
                                                 </div>
                                             ):(
-                                                <table className="w-full text-left border-collapse">
+                                                <table className="w-full text-left border-collapse" style={{tableLayout:"fixed", minWidth:"1000px"}}>
+                                                    <colgroup>
+                                                        <col style={{width:"var(--col-name)"}}/>
+                                                        <col style={{width:"var(--col-opt)"}}/>
+                                                        <col style={{width:"var(--col-sku)"}}/>
+                                                        {visRD.length===0 && <col style={{width:"150px"}}/>}
+                                                        {visRD.map(d=><col key={d} style={{width:"80px"}}/>)}
+                                                    </colgroup>
                                                     <thead>
                                                         <tr className="bg-slate-100 text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200 freeze-header">
-                                                            <th className="py-4 px-5 sticky left-0 bg-slate-100 z-50 shadow-[1px_0_0_#e2e8f0]">상품명</th>
-                                                            <th className="py-4 px-5 sticky left-[200px] bg-slate-100 z-50 shadow-[1px_0_0_#e2e8f0]">구성</th>
-                                                            <th className="py-4 px-5 sticky left-[300px] bg-slate-100 z-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300">SKU ID</th>
-                                                            {visRD.length===0 && <th className="py-4 px-5">해당 기간 데이터 없음</th>}
-                                                            {visRD.map(d=><th key={d} className="py-4 px-4 text-center sticky top-0 z-20 bg-slate-100">{d.slice(5)}</th>)}
+                                                            <th className="py-3 px-4 sticky top-0 left-0 bg-slate-100 z-[60] shadow-[1px_0_0_#e2e8f0]">상품명</th>
+                                                            <th className="py-3 px-4 sticky top-0 bg-slate-100 z-[60] shadow-[1px_0_0_#e2e8f0]" style={{left:"var(--col-left1)"}}>구성</th>
+                                                            <th className="py-3 px-4 sticky top-0 bg-slate-100 z-[60] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r-2 border-slate-300" style={{left:"var(--col-left2)"}}>SKU ID</th>
+                                                            {visRD.length===0 && <th className="py-3 px-4 sticky top-0 bg-slate-100 z-[30]">해당 기간 데이터 없음</th>}
+                                                            {visRD.map(d=><th key={d} className="py-3 px-4 text-center sticky top-0 z-[30] bg-slate-100">{d.slice(5)}</th>)}
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-100 text-sm">
@@ -685,16 +650,16 @@
                                                             const prevName = idx>0 ? filtRI[idx-1].name : null;
                                                             const isNewGroup = prevName!==null && prevName!==item.name;
                                                             return(
-                                                                <tr key={idx} className={`hover:bg-blue-50/40 transition-colors ${isNewGroup?"border-t-[3px] border-slate-200":""}`}>
-                                                                    <td className="py-4 px-5 font-extrabold text-slate-800 bg-white sticky left-0 z-30 shadow-[1px_0_0_#f1f5f9] whitespace-nowrap min-w-[200px]">{item.name}</td>
-                                                                    <td className="py-4 px-5 text-slate-500 bg-white sticky left-[200px] z-30 shadow-[1px_0_0_#f1f5f9] whitespace-nowrap min-w-[100px]">{item.option||"-"}</td>
-                                                                    <td className="py-4 px-5 font-mono text-slate-400 text-xs bg-white sticky left-[300px] z-30 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)] border-r border-slate-200 whitespace-nowrap min-w-[100px]">{item.skuId||"-"}</td>
-                                                                    {visRD.length===0 && <td className="py-4 px-5"></td>}
+                                                                <tr key={idx} className={`hover:bg-blue-50/40 transition-colors ${isNewGroup?"border-t-4 border-slate-300":""}`}>
+                                                                    <td className="py-3 px-4 font-extrabold text-slate-800 bg-white sticky left-0 z-[40] shadow-[1px_0_0_#f1f5f9] whitespace-nowrap overflow-hidden text-ellipsis">{item.name}</td>
+                                                                    <td className="py-3 px-4 text-slate-500 bg-white sticky z-[40] shadow-[1px_0_0_#f1f5f9] whitespace-nowrap overflow-hidden text-ellipsis" style={{left:"var(--col-left1)"}}>{item.option||"-"}</td>
+                                                                    <td className="py-3 px-4 font-mono text-slate-400 text-xs bg-white sticky z-[40] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)] border-r-2 border-slate-200 whitespace-nowrap" style={{left:"var(--col-left2)"}}>{item.skuId||"-"}</td>
+                                                                    {visRD.length===0 && <td className="py-3 px-4"></td>}
                                                                     {visRD.map((d,i)=>{
                                                                         const v=item.history[d];
                                                                         const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
                                                                         return(
-                                                                            <td key={i} className={`py-4 px-4 text-center font-bold min-w-[80px] ${num===null?"text-slate-300":num===0?"text-red-400":"text-slate-700"}`}>
+                                                                            <td key={i} className={`py-3 px-4 text-center font-bold ${num===null?"text-slate-300":num===0?"text-red-400":"text-slate-700"}`}>
                                                                                 {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
                                                                             </td>
                                                                         );
@@ -715,22 +680,20 @@
                     {/* ─── N배송 탭 ─────────────────────────────────────────── */}
                     {view==="argo"&&(
                         <main className="flex-grow w-full px-6 md:px-10 py-6 space-y-6 animate-fade-in">
-                            {/* 컨트롤 바 */}
                             <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
                                 <h2 className="font-extrabold text-slate-800 text-xl px-2">📦 N배송(아르고) 분석 상황판</h2>
                                 <div className="flex flex-wrap items-center gap-3">
                                     <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
-                                        <DD value={aY} options={aYears.map(y=>({value:y,label:`${y}년`}))} onChange={setAY}/>
+                                        <Dropdown value={aY} options={aYears.map(y=>({value:y,label:`${y}년`}))} onChange={setAY}/>
                                         <div className="w-px h-6 bg-slate-700"/>
-                                        <DD value={aM} options={aMons.map(m=>({value:m,label:`${m}월`}))} onChange={setAM}/>
+                                        <Dropdown value={aM} options={aMons.map(m=>({value:m,label:`${m}월`}))} onChange={setAM}/>
                                         <div className="w-px h-6 bg-slate-700"/>
-                                        <DD value={aD} options={aDatesM.map(d=>({value:d,label:`${d.slice(8)}일${d===dbDates[dbDates.length-1]?" (최신)":""}`}))} onChange={setAD}/>
+                                        <Dropdown value={aD} options={aDatesM.map(d=>({value:d,label:`${d.slice(8)}일${d===dbDates[dbDates.length-1]?" (최신)":""}`}))} onChange={setAD}/>
                                     </div>
-                                    <DD label="ADS 산정" value={adsW} options={[{value:3,label:"최근 3일"},{value:4,label:"최근 4일"},{value:5,label:"최근 5일"}]} onChange={setAdsW}/>
+                                    <Dropdown label="ADS 산정" value={adsW} options={[{value:3,label:"최근 3일"},{value:4,label:"최근 4일"},{value:5,label:"최근 5일"}]} onChange={setAdsW}/>
                                 </div>
                             </div>
 
-                            {/* 대기 현황 */}
                             <div className={`${pend.length>0?"bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-orange-200":"bg-white border-2 border-slate-200"} rounded-3xl shadow-sm overflow-hidden`}>
                                 <div className="p-4 md:p-6">
                                     <h3 className={`text-lg font-extrabold flex items-center gap-2 ${pend.length>0?"text-orange-900":"text-slate-600"}`}>
@@ -747,14 +710,13 @@
                                                 </div>
                                                 <h4 className="font-extrabold text-slate-800 text-sm">{inc.sku}</h4>
                                                 <span className="text-2xl font-black text-orange-600">+{inc.amount.toLocaleString()} <span className="text-xs text-slate-500">개 대기</span></span>
-                                                <button onClick={()=>toggleReg(idx)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3 py-2 rounded-lg transition-colors cursor-pointer active:scale-95">입고 완료처리 ✓ (현재고 + 합산)</button>
+                                                <button onClick={()=>toggleReg(idx)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3 py-2 rounded-lg transition-colors cursor-pointer active:scale-95">입고 완료처리 ✓ (+ 합산)</button>
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
 
-                            {/* 요약 카드 */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 {[
                                     {label:"🚨 7일내 긴급 대응",val:summ.crit,unit:"개 SKU",c:"text-red-600"},
@@ -772,7 +734,6 @@
                                 ))}
                             </div>
 
-                            {/* 테이블 + 차트 */}
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                                 <div className="lg:col-span-9 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden freeze-table-container">
                                     <div className="p-6 border-b border-slate-100 bg-slate-50/50 space-y-4">
@@ -806,17 +767,26 @@
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse">
+                                    <div className="freeze-table-container">
+                                        <table className="w-full text-left border-collapse" style={{tableLayout:"fixed", minWidth:"820px"}}>
+                                            <colgroup>
+                                                <col style={{width:"100px"}}/>
+                                                <col style={{width:"200px"}}/>
+                                                <col style={{width:"110px"}}/>
+                                                <col style={{width:"80px"}}/>
+                                                <col style={{width:"130px"}}/>
+                                                <col style={{width:"110px"}}/>
+                                                <col style={{width:"120px"}}/>
+                                            </colgroup>
                                             <thead>
                                                 <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 text-xs font-extrabold uppercase tracking-wider freeze-header">
-                                                    <th className="py-4 px-6 sticky top-0 left-0 bg-slate-100 z-30 shadow-[1px_0_0_#e2e8f0]">분류</th>
-                                                    <th className="py-4 px-6 sticky top-0 left-[100px] bg-slate-100 z-30 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300">SKU</th>
-                                                    <th className="py-4 px-6 text-center sticky top-0 bg-slate-100 z-20">현재고 ({aD.slice(5)})</th>
-                                                    <th className="py-4 px-6 text-center sticky top-0 bg-slate-100 z-20">ADS</th>
-                                                    <th className="py-4 px-6 sticky top-0 bg-slate-100 z-20">예상 품절일</th>
-                                                    <th className="py-4 px-6 sticky top-0 bg-slate-100 z-20">잔여기간</th>
-                                                    <th className="py-4 px-6 text-right sticky top-0 bg-slate-100 z-20">보충 필요(30일)</th>
+                                                    <th className="py-4 px-6 sticky top-0 left-0 bg-slate-100 z-[60] shadow-[1px_0_0_#e2e8f0]">분류</th>
+                                                    <th className="py-4 px-6 sticky top-0 bg-slate-100 z-[60] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300" style={{left:"100px"}}>SKU</th>
+                                                    <th className="py-4 px-6 text-center sticky top-0 bg-slate-100 z-[30]">현재고 ({aD.slice(5)})</th>
+                                                    <th className="py-4 px-6 text-center sticky top-0 bg-slate-100 z-[30]">ADS</th>
+                                                    <th className="py-4 px-6 sticky top-0 bg-slate-100 z-[30]">예상 품절일</th>
+                                                    <th className="py-4 px-6 sticky top-0 bg-slate-100 z-[30]">잔여기간</th>
+                                                    <th className="py-4 px-6 text-right sticky top-0 bg-slate-100 z-[30]">보충 필요(30일)</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 text-sm">
@@ -829,11 +799,11 @@
                                                     return(
                                                         <tr key={item.sku} onClick={()=>setSelSku(item.sku)}
                                                             className={`hover:bg-indigo-50/40 cursor-pointer transition-all border-l-4 ${isSel?"bg-indigo-50/80 border-l-indigo-600":"border-l-transparent"}`}>
-                                                            <td className="py-5 px-6 font-bold text-slate-400 bg-white sticky left-0 z-10 shadow-[1px_0_0_#f1f5f9] min-w-[100px]">{item.category}</td>
-                                                            <td className="py-5 px-6 font-bold text-slate-900 bg-white sticky left-[100px] z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)] border-r border-slate-200 min-w-[200px]">{item.sku}</td>
+                                                            <td className="py-5 px-6 font-bold text-slate-400 bg-white sticky left-0 z-[20] shadow-[1px_0_0_#f1f5f9]">{item.category}</td>
+                                                            <td className="py-5 px-6 font-bold text-slate-900 bg-white sticky z-[20] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)] border-r border-slate-200" style={{left:"100px"}}>{item.sku}</td>
                                                             <td className="py-5 px-6 text-center font-extrabold text-slate-900 text-base">
                                                                 {item.currentStock.toLocaleString()}
-                                                                {item.simulatedArrivals>0&&<span className="block text-xs text-emerald-600 font-extrabold mt-0.5">(+{item.simulatedArrivals} 대기)</span>}
+                                                                {item.simulatedArrivals>0&&<span className="block text-xs text-emerald-600 font-extrabold mt-0.5">(+{item.simulatedArrivals} 예약)</span>}
                                                             </td>
                                                             <td className="py-5 px-6 text-center font-mono font-bold text-slate-700">{item.ads.toFixed(2)}</td>
                                                             <td className="py-5 px-6">
@@ -855,7 +825,6 @@
                                     </div>
                                 </div>
 
-                                {/* 차트 패널 */}
                                 <div className="lg:col-span-3 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
                                     <h3 className="text-lg font-bold text-slate-900 leading-tight">{selSku||"왼쪽에서 항목 선택"}</h3>
                                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
@@ -880,20 +849,19 @@
                         </main>
                     )}
 
-                    {/* 공통 엑셀 업로드 */}
                     <div className="px-6 md:px-10 pb-10 w-full mt-auto">
                         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
                             <div>
                                 <h4 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
-                                    📊 통합 엑셀 파일 직접 연동 관리자
-                                    <span className="text-xs bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-0.5 rounded-full">Super Parser V8 (타임머신 연동)</span>
+                                    📊 통합 엑셀 연동 관리자
+                                    <span className="text-xs bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-0.5 rounded-full">역방향 연도 엔진 탑재 (최종)</span>
                                 </h4>
                                 <p className="text-xs text-slate-400 mt-1">
-                                    로켓배송 / N배송 / 출고 엑셀이 합쳐진 파일 하나만 끌어다 놓으시면 브라우저가 수만 개의 과거 이력까지 스스로 복원하여 저장합니다.
+                                    파일 하나만 끌어다 놓으시면 브라우저가 수만 개의 과거 이력까지 스스로 복원하여 저장합니다.
                                 </p>
                             </div>
                             <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 rounded-2xl p-10 text-center transition-colors bg-indigo-50/20 relative cursor-pointer">
-                                <input type="file" accept=".xlsx,.xls" onChange={handleUpload} onClick={e=>e.target.value=null} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
+                                <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} onClick={e=>e.target.value=null} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
                                 <span className="text-4xl block mb-4">📂</span>
                                 <h5 className="text-sm font-extrabold text-indigo-950">여기에 엑셀 파일을 드래그 앤 드롭 하세요</h5>
                             </div>
