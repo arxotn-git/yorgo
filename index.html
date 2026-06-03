@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>N배송(아르고) 재고현황 (v34)</title>
+    <title>N배송(아르고) 재고현황 (v1)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -17,74 +17,40 @@
     <!-- SheetJS (Excel Parser) CDN -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
-    <!-- Firebase SDK Modular Import Map -->
-    <script type="importmap">
-      {
-        "imports": {
-          "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
-          "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
-          "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"
-        }
-      }
-    </script>
+    <!-- Firebase SDK Compat -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
 
     <style>
-        body {
-            font-family: 'Inter', 'Noto Sans KR', sans-serif;
-        }
-        /* Custom scrollbar style */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f1f5f9;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
-        }
+        body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .tab-btn { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
     <div id="root"></div>
 
-    <script type="text/babel" data-type="module">
-        // --- FIREBASE IMPORTS ---
-        import { initializeApp } from "firebase/app";
-        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-        import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
-
+    <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
-        const APP_VERSION = 34;
+        const APP_VERSION = 1; 
+        const SECRET_PASSWORD = "0319"; 
 
-        // Secure Environment check and fallback setup
-        let app, auth, db;
+        // 파이어베이스 셋팅 (깃허브 연동 기반)
+        let app, db;
         let useFirebase = false;
         
         let configRaw = null;
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-            configRaw = __firebase_config;
-        } else if (window.__firebase_config) {
+        if (typeof window.__firebase_config !== 'undefined' && window.__firebase_config) {
             configRaw = window.__firebase_config;
         }
 
-        let appId = "default-app-id";
-        if (typeof __app_id !== 'undefined' && __app_id) {
-            appId = __app_id;
-        } else if (window.__app_id) {
+        let appId = "argo-dashboard";
+        if (typeof window.__app_id !== 'undefined' && window.__app_id) {
             appId = window.__app_id;
-        }
-
-        let authToken = null;
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            authToken = __initial_auth_token;
-        } else if (window.__initial_auth_token) {
-            authToken = window.__initial_auth_token;
         }
 
         if (configRaw) {
@@ -92,16 +58,14 @@
                 let parsedConfig = typeof configRaw === 'string' ? JSON.parse(configRaw) : configRaw;
                 if (typeof parsedConfig === 'string') parsedConfig = JSON.parse(parsedConfig);
                 
-                app = initializeApp(parsedConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
+                app = firebase.initializeApp(parsedConfig);
+                db = firebase.firestore();
                 useFirebase = true;
             } catch (e) {
-                console.error("Firebase 초기화 에러:", e);
+                console.error("Firebase 초기화 에러, 깃허브 모드로 진행합니다:", e);
             }
         }
 
-        // --- PARSING HELPERS ---
         const parseDateString = (dateStr) => {
             if (!dateStr) return new Date();
             const cleanStr = dateStr.split(' ')[0];
@@ -113,34 +77,33 @@
             return sku.replace(/^요미몬\s+/, "").trim();
         };
 
-        // --- INITIAL DATA SETS ---
+        // --- 초기 기본 데이터 전체 복구 (5월 11일 ~ 6월 2일) ---
         const INITIAL_DATES = [
             "2026-05-11", "2026-05-12", "2026-05-13", "2026-05-14", "2026-05-15",
             "2026-05-18", "2026-05-19", "2026-05-20", "2026-05-21", "2026-05-22",
-            "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29", "2026-05-29 (2)", "2026-06-01", "2026-06-02"
+            "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29", "2026-05-29 (2)", 
+            "2026-06-01", "2026-06-02"
         ];
+        
+        const INITIAL_ROCKET_DATES = [
+            "2026-05-11", "2026-05-12", "2026-05-13", "2026-05-14", "2026-05-15",
+            "2026-05-18", "2026-05-19", "2026-05-20", "2026-05-21", "2026-05-22",
+            "2026-05-26", "2026-05-27", "2026-05-28", "2026-05-29", "2026-06-01", "2026-06-02"
+        ];
+        
+        const INITIAL_ROCKET_DATA = {
+            "플레이돌": Array(16).fill("-"), 
+            "플레이돌 맥스": Array(16).fill("-"),
+            "키즈탭 프로": Array(16).fill("-")
+        };
 
         const CATEGORIES = {
-            "플레이돌": "플레이돌",
-            "플레이돌 맥스": "플레이돌",
-            "키즈탭 프로": "키즈탭",
-            "키즈탭 프로 디즈니 확장패키지": "키즈탭",
-            "안심클레이 10종팩": "클레이",
-            "안심클레이 15종팩": "클레이",
-            "클레이 도구박스(트레이포함)": "클레이",
-            "사운드차트 3종 패키지": "기타",
-            "와우펜(3개입)": "와우펜",
-            "와우펜북-한글": "와우펜",
-            "와우펜북-숫자": "와우펜",
-            "와우펜북-미술": "와우펜",
-            "멀티보드": "기타",
-            "똑똑한 낱말카드": "기타",
-            "키즈 무선마이크": "기타",
-            "제로비누": "기타",
-            "저자극 샤워타월": "기타",
-            "와우펜(1개)": "와우펜",
-            "쇼핑백(중)": "기타",
-            "유니버스 VIP 멤버십 1년 이용권": "기타"
+            "플레이돌": "플레이돌", "플레이돌 맥스": "플레이돌", "키즈탭 프로": "키즈탭",
+            "키즈탭 프로 디즈니 확장패키지": "키즈탭", "안심클레이 10종팩": "클레이", "안심클레이 15종팩": "클레이",
+            "클레이 도구박스(트레이포함)": "클레이", "사운드차트 3종 패키지": "기타", "와우펜(3개입)": "와우펜",
+            "와우펜북-한글": "와우펜", "와우펜북-숫자": "와우펜", "와우펜북-미술": "와우펜",
+            "멀티보드": "기타", "똑똑한 낱말카드": "기타", "키즈 무선마이크": "기타", "제로비누": "기타",
+            "저자극 샤워타월": "기타", "와우펜(1개)": "와우펜", "쇼핑백(중)": "기타", "유니버스 VIP 멤버십 1년 이용권": "기타"
         };
 
         const INITIAL_STOCK_DATA = {
@@ -183,51 +146,30 @@
             const [isOpen, setIsOpen] = useState(false);
             const dropdownRef = useRef(null);
 
-            const selectedOption = useMemo(() => {
-                return options.find(o => o.value === value) || options[0];
-            }, [options, value]);
+            const selectedOption = useMemo(() => options.find(o => o.value === value) || options[0], [options, value]);
 
             useEffect(() => {
                 const handleClickOutside = (event) => {
-                    if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-                        setIsOpen(false);
-                    }
+                    if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false);
                 };
                 document.addEventListener("mousedown", handleClickOutside);
                 return () => document.removeEventListener("mousedown", handleClickOutside);
             }, []);
 
+            if (options.length === 0) return null;
+
             return (
                 <div ref={dropdownRef} className="relative flex items-center bg-slate-800 rounded-xl px-4 py-1.5 border border-slate-700 pointer-events-auto z-50">
-                    <span className="text-sm text-slate-400 mr-2 font-medium select-none">{label}:</span>
+                    {label && <span className="text-sm text-slate-400 mr-2 font-medium select-none">{label}:</span>}
                     <div className="relative">
-                        <button
-                            type="button"
-                            onClick={() => setIsOpen(!isOpen)}
-                            className="bg-slate-900 text-indigo-300 font-extrabold rounded-lg px-3 py-2 border border-slate-700 flex items-center justify-between gap-2 hover:border-indigo-500 hover:text-indigo-200 transition-all cursor-pointer min-w-[140px]"
-                        >
+                        <button type="button" onClick={() => setIsOpen(!isOpen)} className="bg-slate-900 text-indigo-300 font-extrabold rounded-lg px-3 py-2 border border-slate-700 flex items-center justify-between gap-2 hover:border-indigo-500 hover:text-indigo-200 transition-all cursor-pointer min-w-[120px]">
                             <span>{selectedOption ? selectedOption.label : ""}</span>
-                            <svg className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                            </svg>
+                            <svg className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
                         </button>
-
                         {isOpen && (
-                            <div className="absolute right-0 mt-2 w-56 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1 z-[999] max-h-60 overflow-y-auto pointer-events-auto">
+                            <div className="absolute right-0 mt-2 w-48 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1 z-[999] max-h-60 overflow-y-auto pointer-events-auto">
                                 {options.map((opt) => (
-                                    <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => {
-                                            onChange(opt.value);
-                                            setIsOpen(false);
-                                        }}
-                                        className={`w-full text-left px-4 py-2.5 text-sm font-semibold transition-all flex items-center justify-between border-b border-slate-800/40 last:border-0 ${
-                                            opt.value === value 
-                                            ? "bg-indigo-600/30 text-indigo-300 border-l-4 border-indigo-500" 
-                                            : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                                        }`}
-                                    >
+                                    <button key={opt.value} type="button" onClick={() => { onChange(opt.value); setIsOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-semibold transition-all flex items-center justify-between border-b border-slate-800/40 last:border-0 ${opt.value === value ? "bg-indigo-600/30 text-indigo-300 border-l-4 border-indigo-500" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
                                         <span>{opt.label}</span>
                                         {opt.value === value && <span className="text-indigo-400 font-bold">✓</span>}
                                     </button>
@@ -239,28 +181,45 @@
             );
         }
 
-        // --- MAIN APP COMPONENT ---
         function App() {
-            // 🔒 SECURITY STATE (LOGIN LOCK)
+            // 🔒 SECURITY STATE
             const [isLoggedIn, setIsLoggedIn] = useState(false);
             const [pwdInput, setPwdInput] = useState("");
             const [loginError, setLoginError] = useState(false);
 
-            // ==========================================
-            // 🔑 여기에 원하시는 비밀번호를 설정하세요!
-            // ==========================================
-            const SECRET_PASSWORD = "1234"; 
+            // App States
+            const [currentView, setCurrentView] = useState("argo"); // 'argo' | 'rocket'
+            const [cloudSync, setCloudSync] = useState(useFirebase ? "connecting" : "github");
 
-            const [user, setUser] = useState(null);
-            const [cloudSync, setCloudSync] = useState(useFirebase ? "connecting" : "local");
-
-            // Database States
+            // ARGO Data
             const [dbDates, setDbDates] = useState(INITIAL_DATES);
             const [dbStockData, setDbStockData] = useState(INITIAL_STOCK_DATA);
             const [dbIncomings, setDbIncomings] = useState(INITIAL_INCOMINGS);
 
+            // ROCKET Data
+            const [rocketDates, setRocketDates] = useState(INITIAL_ROCKET_DATES);
+            const [rocketData, setRocketData] = useState(INITIAL_ROCKET_DATA);
+
             // Filtering configuration
-            const [selectedDate, setSelectedDate] = useState("2026-06-02");
+            const availableMonths = useMemo(() => {
+                const mSet = new Set(dbDates.map(d => d.substring(0, 7)));
+                return Array.from(mSet).sort().reverse();
+            }, [dbDates]);
+
+            const [selectedMonth, setSelectedMonth] = useState(availableMonths[0]);
+            
+            // Adjust dates based on selected month
+            const monthFilteredDates = useMemo(() => {
+                return dbDates.filter(d => d.startsWith(selectedMonth));
+            }, [dbDates, selectedMonth]);
+
+            const [selectedDate, setSelectedDate] = useState(dbDates[dbDates.length - 1]);
+
+            useEffect(() => {
+                const latestInMonth = monthFilteredDates[monthFilteredDates.length - 1];
+                if (latestInMonth) setSelectedDate(latestInMonth);
+            }, [selectedMonth]);
+
             const [adsWindow, setAdsWindow] = useState(4);
             const [onlyCritical30, setOnlyCritical30] = useState(true);
             const [excludeZeroStock, setExcludeZeroStock] = useState(true);
@@ -268,163 +227,82 @@
             const [categoryFilter, setCategoryFilter] = useState("ALL");
             const [selectedSku, setSelectedSku] = useState("안심클레이 10종팩");
 
-            const [showAllHistory, setShowAllHistory] = useState(false);
-
-            // Simulations
             const [simulations, setSimulations] = useState([]);
-
             const [simSku, setSimSku] = useState("플레이돌 맥스");
-            const [simDispatchDate, setSimDispatchDate] = useState("2026-05-29");
+            const [simDispatchDate, setSimDispatchDate] = useState("2026-06-02");
             const [simType, setSimType] = useState("택배");
             const [simAmount, setSimAmount] = useState(100);
-            const [simMemo, setSimMemo] = useState("");
-
-            // UI States
-            const [editorActive, setEditorActive] = useState(false);
-            const [newColDate, setNewColDate] = useState("2026-06-03");
-            const [editorStocks, setEditorStocks] = useState({});
-            const [isPendingExpanded, setIsPendingExpanded] = useState(true);
 
             const [notification, setNotification] = useState(null);
-
             const triggerNotification = (message, type = "success") => {
                 setNotification({ message, type });
                 setTimeout(() => setNotification(null), 4000);
             };
 
-            const addSimulation = (e) => {
+            const handleLogin = (e) => {
                 e.preventDefault();
-                if (simAmount <= 0) {
-                    triggerNotification("입고 수량은 1개 이상이어야 합니다.", "error");
-                    return;
-                }
-                const newSim = {
-                    id: Date.now(),
-                    sku: simSku,
-                    dispatchDate: simDispatchDate,
-                    type: simType,
-                    amount: parseInt(simAmount),
-                    memo: simMemo || `${simType === "택배" ? "택배(2~3일후 입고)" : "용차(당일입고)"}`
-                };
-                setSimulations([...simulations, newSim]);
-                setSimMemo("");
-                triggerNotification(`${simSku} 입고 시뮬레이션이 등록되었습니다.`);
+                if (pwdInput === SECRET_PASSWORD) setIsLoggedIn(true);
+                else { setLoginError(true); setPwdInput(""); }
             };
-
-            const removeSimulation = (id) => {
-                setSimulations(simulations.filter(sim => sim.id !== id));
-                triggerNotification("시뮬레이션 일정이 취소되었습니다.", "info");
-            };
-
-            // --- FIREBASE SECURITY FLOW (Compat mode) ---
-            useEffect(() => {
-                if (!useFirebase) {
-                    setUser({ uid: "local-user" });
-                    return;
-                }
-                const initAuth = async () => {
-                    try {
-                        if (authToken) {
-                            try {
-                                await signInWithCustomToken(auth, authToken);
-                            } catch(tokenErr) {
-                                console.warn("토큰 만료. 익명 인증으로 안전 전환.", tokenErr);
-                                await signInAnonymously(auth);
-                            }
-                        } else {
-                            await signInAnonymously(auth);
-                        }
-                    } catch (error) {
-                        console.error("Firebase auth error:", error);
-                        setCloudSync("error");
-                    }
-                };
-                initAuth();
-                const unsubscribe = onAuthStateChanged(auth, setUser);
-                return () => unsubscribe();
-            }, []);
 
             // Firebase Snapshot sync & Auto-Upgrade Logic
             useEffect(() => {
-                if (!useFirebase || !user) return;
+                if (!useFirebase) return;
 
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'inventory_v1', 'dashboard_state');
-                const unsubscribe = onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) {
+                const docRef = db.doc(`artifacts/${appId}/public/data/inventory_v1/dashboard_state`);
+                const unsubscribe = docRef.onSnapshot((docSnap) => {
+                    if (docSnap.exists) {
                         const data = docSnap.data();
                         const cloudVersion = data.APP_VERSION || 0;
-                        const newestHardcodedDate = INITIAL_DATES[INITIAL_DATES.length - 1];
                         
-                        // 🚀 UPGRADE TRIGGER
-                        if (APP_VERSION > cloudVersion || (data.DATES && !data.DATES.includes(newestHardcodedDate))) {
-                            setDoc(docRef, {
-                                APP_VERSION: APP_VERSION,
-                                DATES: INITIAL_DATES,
-                                STOCK_DATA: INITIAL_STOCK_DATA,
-                                HISTORICAL_INCOMINGS: INITIAL_INCOMINGS
-                            }).then(() => {
-                                triggerNotification(`클라우드 시스템이 최신 버전(v${APP_VERSION})으로 자동 업그레이드 되었습니다.`, "success");
-                            });
+                        if (APP_VERSION > cloudVersion) {
+                            docRef.set({
+                                APP_VERSION, DATES: INITIAL_DATES, STOCK_DATA: INITIAL_STOCK_DATA, HISTORICAL_INCOMINGS: INITIAL_INCOMINGS,
+                                ROCKET_DATES: INITIAL_ROCKET_DATES, ROCKET_DATA: INITIAL_ROCKET_DATA
+                            }).then(() => triggerNotification(`클라우드 자동 업그레이드 완료 (v${APP_VERSION})`, "success"));
                             return;
                         }
 
-                        if (data.DATES && data.STOCK_DATA) {
-                            setDbDates(data.DATES);
-                            setDbStockData(data.STOCK_DATA);
-                            setDbIncomings(data.HISTORICAL_INCOMINGS || []);
-                            
-                            const latestCloudDate = data.DATES[data.DATES.length - 1];
-                            if (!dbDates.includes(latestCloudDate) || selectedDate === dbDates[dbDates.length - 1] || !data.DATES.includes(selectedDate)) {
-                                setSelectedDate(latestCloudDate);
-                            }
-                        }
+                        if (data.DATES) setDbDates(data.DATES);
+                        if (data.STOCK_DATA) setDbStockData(data.STOCK_DATA);
+                        if (data.HISTORICAL_INCOMINGS) setDbIncomings(data.HISTORICAL_INCOMINGS);
+                        if (data.ROCKET_DATES) setRocketDates(data.ROCKET_DATES);
+                        if (data.ROCKET_DATA) setRocketData(data.ROCKET_DATA);
+                        
                         setCloudSync("synced");
                     } else {
-                        setDoc(docRef, {
-                            APP_VERSION: APP_VERSION,
-                            DATES: INITIAL_DATES,
-                            STOCK_DATA: INITIAL_STOCK_DATA,
-                            HISTORICAL_INCOMINGS: INITIAL_INCOMINGS
-                        }).then(() => {
-                            setCloudSync("synced");
-                        }).catch(err => {
-                            console.error("DB Init failed:", err);
-                            setCloudSync("error");
-                        });
+                        docRef.set({
+                            APP_VERSION, DATES: INITIAL_DATES, STOCK_DATA: INITIAL_STOCK_DATA, HISTORICAL_INCOMINGS: INITIAL_INCOMINGS,
+                            ROCKET_DATES: INITIAL_ROCKET_DATES, ROCKET_DATA: INITIAL_ROCKET_DATA
+                        }).then(() => setCloudSync("synced")).catch(() => setCloudSync("error"));
                     }
-                }, (error) => {
-                    console.error("Firestore onSnapshot error:", error);
-                    setCloudSync("error");
-                });
-
+                }, () => setCloudSync("error"));
                 return () => unsubscribe();
-            }, [user, dbDates, selectedDate]);
+            }, []);
 
-            const saveChangesToCloud = async (updatedDates, updatedStockData, updatedIncomings = dbIncomings) => {
+            const saveChangesToCloud = async (updatedDbDates, updatedDbStock, updatedIncomings, updatedRocketDates, updatedRocketData) => {
                 if (!useFirebase) {
-                    triggerNotification("로컬 브라우저 상태로 임시 저장되었습니다.", "info");
-                    return;
-                }
-                if (!user) {
-                    triggerNotification("인증 진행 중입니다.", "error");
+                    setDbDates(updatedDbDates || dbDates);
+                    setDbStockData(updatedDbStock || dbStockData);
+                    setDbIncomings(updatedIncomings || dbIncomings);
+                    setRocketDates(updatedRocketDates || rocketDates);
+                    setRocketData(updatedRocketData || rocketData);
+                    triggerNotification("로컬 상태로 즉시 반영되었습니다.", "info");
                     return;
                 }
                 setCloudSync("connecting");
                 try {
-                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'inventory_v1', 'dashboard_state');
-                    await setDoc(docRef, {
-                        APP_VERSION: APP_VERSION,
-                        DATES: updatedDates,
-                        STOCK_DATA: updatedStockData,
-                        HISTORICAL_INCOMINGS: updatedIncomings
+                    await db.doc(`artifacts/${appId}/public/data/inventory_v1/dashboard_state`).set({
+                        APP_VERSION, 
+                        DATES: updatedDbDates || dbDates, 
+                        STOCK_DATA: updatedDbStock || dbStockData, 
+                        HISTORICAL_INCOMINGS: updatedIncomings || dbIncomings,
+                        ROCKET_DATES: updatedRocketDates || rocketDates,
+                        ROCKET_DATA: updatedRocketData || rocketData
                     });
-                    triggerNotification("클라우드 데이터베이스에 무선 저장 및 동기화되었습니다.", "success");
+                    triggerNotification("클라우드 무선 동기화 완료!", "success");
                     setCloudSync("synced");
-                } catch (err) {
-                    console.error("Firestore save error:", err);
-                    triggerNotification("클라우드 동기화 실패.", "error");
-                    setCloudSync("error");
-                }
+                } catch (err) { setCloudSync("error"); triggerNotification("동기화 실패", "error"); }
             };
 
             const selectedDateIndex = useMemo(() => {
@@ -432,29 +310,18 @@
                 return idx !== -1 ? idx : dbDates.length - 1;
             }, [selectedDate, dbDates]);
 
-            useEffect(() => {
-                const tempStocks = {};
-                Object.keys(dbStockData).forEach(sku => {
-                    tempStocks[sku] = dbStockData[sku][selectedDateIndex] || 0;
-                });
-                setEditorStocks(tempStocks);
-            }, [selectedDateIndex, dbStockData]);
-
             // --- ADS AND FORECASTING ---
             const calculateSkuMetrics = (sku, targetDateIndex) => {
-                const currentStock = dbStockData[sku]?.[targetDateIndex] !== undefined ? dbStockData[sku][targetDateIndex] : 0;
-                
+                const currentStock = dbStockData[sku]?.[targetDateIndex] || 0;
                 const startIndex = Math.max(0, targetDateIndex - adsWindow);
                 const startDateStr = dbDates[startIndex];
                 const targetDateStr = dbDates[targetDateIndex];
-
-                const startStock = dbStockData[sku]?.[startIndex] !== undefined ? dbStockData[sku][startIndex] : 0;
+                const startStock = dbStockData[sku]?.[startIndex] || 0;
                 
                 const startDt = parseDateString(startDateStr);
                 const targetDt = parseDateString(targetDateStr);
                 const diffTime = Math.abs(targetDt - startDt);
                 const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-
                 const stockDelta = startStock - currentStock;
 
                 let windowIncomings = 0;
@@ -463,22 +330,16 @@
                 dbIncomings.forEach(inc => {
                     if (inc.sku !== sku) return;
                     const incDate = parseDateString(inc.date);
-                    
                     let isPhysicallyPresent = false;
                     
                     if (inc.isRegistered) {
                         isPhysicallyPresent = true;
                         if (incDate > startDt && incDate <= targetDt) {
-                            if (currentStock < inc.amount * 0.8 && stockDelta >= 0) {
-                                isPhysicallyPresent = false;
-                            }
+                            if (currentStock < inc.amount * 0.8 && stockDelta >= 0) isPhysicallyPresent = false;
                         }
                     }
-                    
                     if (isPhysicallyPresent) {
-                        if (incDate > startDt && incDate <= targetDt) {
-                            windowIncomings += inc.amount;
-                        }
+                        if (incDate > startDt && incDate <= targetDt) windowIncomings += inc.amount;
                     } else {
                         pendingDbArrivals += inc.amount;
                     }
@@ -493,9 +354,7 @@
                         const dispDt = parseDateString(sim.dispatchDate);
                         const arrDt = new Date(dispDt);
                         if (sim.type === "택배") arrDt.setDate(arrDt.getDate() + 3);
-                        if (arrDt > targetDt) {
-                            simulatedArrivals += sim.amount;
-                        }
+                        if (arrDt > targetDt) simulatedArrivals += sim.amount;
                     }
                 });
 
@@ -506,88 +365,47 @@
                 if (calculatedAds > 0) {
                     const totalProjectedStock = currentStock + simulatedArrivals;
                     daysRemaining = totalProjectedStock / calculatedAds;
-                    
                     if (daysRemaining < 365) {
                         const stockoutDt = new Date(targetDt);
                         stockoutDt.setDate(stockoutDt.getDate() + Math.floor(daysRemaining));
-                        
                         expectedStockoutDate = stockoutDt.toISOString().split('T')[0];
                         displayRemainingText = `${Math.ceil(daysRemaining)}일 남음`;
                     }
                 }
 
-                const replenishment30 = calculatedAds > 0 ? Math.ceil(calculatedAds * 30) : 0;
-
                 return {
-                    sku,
-                    category: CATEGORIES[sku] || "기타",
-                    currentStock,
-                    ads: calculatedAds,
-                    daysRemaining,
-                    displayRemainingText,
-                    expectedStockoutDate,
-                    replenishment30,
-                    simulatedArrivals
+                    sku, category: CATEGORIES[sku] || "기타", currentStock, ads: calculatedAds,
+                    daysRemaining, displayRemainingText, expectedStockoutDate,
+                    replenishment30: calculatedAds > 0 ? Math.ceil(calculatedAds * 30) : 0, simulatedArrivals
                 };
             };
 
-            const processedSkuList = useMemo(() => {
-                return Object.keys(dbStockData).map(sku => {
-                    return calculateSkuMetrics(sku, selectedDateIndex);
-                });
-            }, [selectedDateIndex, adsWindow, simulations, dbStockData, dbDates, dbIncomings]);
+            const processedSkuList = useMemo(() => Object.keys(dbStockData).map(sku => calculateSkuMetrics(sku, selectedDateIndex)), [selectedDateIndex, adsWindow, simulations, dbStockData, dbDates, dbIncomings]);
+            const filteredSkuList = useMemo(() => processedSkuList.filter(item => {
+                if (excludeZeroStock && item.currentStock === 0) return false;
+                if (onlyCritical30 && item.daysRemaining > 30) return false;
+                if (categoryFilter !== "ALL" && item.category !== categoryFilter) return false;
+                if (searchQuery && !item.sku.includes(searchQuery)) return false;
+                return true;
+            }).sort((a, b) => a.daysRemaining - b.daysRemaining), [processedSkuList, onlyCritical30, excludeZeroStock, searchQuery, categoryFilter]);
 
-            const filteredSkuList = useMemo(() => {
-                return processedSkuList.filter(item => {
-                    if (excludeZeroStock && item.currentStock === 0) return false;
-                    if (onlyCritical30 && item.daysRemaining > 30) return false;
-                    if (categoryFilter !== "ALL" && item.category !== categoryFilter) return false;
-                    if (searchQuery && !item.sku.includes(searchQuery)) return false;
-
-                    return true;
-                }).sort((a, b) => a.daysRemaining - b.daysRemaining);
-            }, [processedSkuList, onlyCritical30, excludeZeroStock, searchQuery, categoryFilter]);
-
-            // --- PENDING DISPATCH TRACKING ---
-            const pendingDispatches = useMemo(() => {
-                return dbIncomings.filter(inc => inc.isRegistered === false).map(inc => {
-                    const dispDt = parseDateString(inc.date);
-                    const arrDt = new Date(dispDt);
-                    if (inc.type === "택배") arrDt.setDate(arrDt.getDate() + 3);
-                    return {
-                        ...inc,
-                        arrivalDateStr: arrDt.toISOString().split('T')[0],
-                        isOverdue: arrDt < parseDateString(selectedDate)
-                    };
-                });
-            }, [dbIncomings, selectedDate]);
-
-            useEffect(() => {
-                if (pendingDispatches.length === 0) {
-                    setIsPendingExpanded(false);
-                } else {
-                    setIsPendingExpanded(true);
-                }
-            }, [pendingDispatches.length]);
+            const pendingDispatches = useMemo(() => dbIncomings.filter(inc => !inc.isRegistered).map(inc => {
+                const arrDt = new Date(parseDateString(inc.date));
+                if (inc.type === "택배") arrDt.setDate(arrDt.getDate() + 3);
+                return { ...inc, arrivalDateStr: arrDt.toISOString().split('T')[0] };
+            }), [dbIncomings]);
 
             const summaryMetrics = useMemo(() => {
-                const totalSkus = processedSkuList.length;
-                const criticalCount = processedSkuList.filter(item => item.daysRemaining <= 10).length;
-                const warningCount = processedSkuList.filter(item => item.daysRemaining > 10 && item.daysRemaining <= 30).length;
-                const totalStock = processedSkuList.reduce((sum, item) => sum + item.currentStock, 0);
-                const totalDailySales = processedSkuList.reduce((sum, item) => sum + item.ads, 0);
-
                 return {
-                    totalSkus,
-                    criticalCount,
-                    warningCount,
-                    totalStock,
-                    totalDailySales: totalDailySales.toFixed(1)
+                    criticalCount: processedSkuList.filter(i => i.daysRemaining <= 10).length,
+                    warningCount: processedSkuList.filter(i => i.daysRemaining > 10 && i.daysRemaining <= 30).length,
+                    totalStock: processedSkuList.reduce((s, i) => s + i.currentStock, 0),
+                    totalDailySales: processedSkuList.reduce((s, i) => s + i.ads, 0).toFixed(1)
                 };
             }, [processedSkuList]);
 
-            // --- EXCEL SHEETJS UPLOADERS ---
-            const handleStockExcelUpload = (e) => {
+            // --- 🚀 3in1 UNIFIED EXCEL PARSER ---
+            const handleUnifiedExcelUpload = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
 
@@ -596,166 +414,156 @@
                     try {
                         const data = evt.target.result;
                         const workbook = XLSX.read(data, { type: 'binary' });
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
-                        if (rows.length < 2) {
-                            triggerNotification("엑셀 행의 수가 너무 적습니다.", "error");
-                            return;
-                        }
+                        let newRocketDates = [...rocketDates];
+                        let newRocketData = { ...rocketData };
+                        let newArgoDates = [...dbDates];
+                        let newArgoData = { ...dbStockData };
+                        let newIncomings = [...dbIncomings];
 
-                        const headerRow = rows[0];
-                        const dateCols = [];
-                        let skuColIdx = -1;
+                        // 1. ROCKET SHEET PARSING (Index 0)
+                        try {
+                            const sRocket = workbook.Sheets["로켓"] || workbook.Sheets[workbook.SheetNames[0]];
+                            if(sRocket) {
+                                const rRows = XLSX.utils.sheet_to_json(sRocket, { header: 1 });
+                                if(rRows.length > 1) {
+                                    const hRow = rRows[0];
+                                    const dCols = []; let sIdx = 0;
+                                    hRow.forEach((c, i) => {
+                                        if(c && (String(c).match(/^\d+[\/\-]\d+/) || String(c).startsWith('202'))) {
+                                            let lbl = String(c).trim();
+                                            if (!lbl.startsWith("202")) {
+                                                let [m, d] = lbl.split(/[\/\-]/);
+                                                if (m && d) lbl = `2026-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                                            }
+                                            dCols.push({ index: i, label: lbl });
+                                        }
+                                    });
+                                    
+                                    const parsedDates = dCols.map(c => c.label);
+                                    newRocketDates = Array.from(new Set([...rocketDates, ...parsedDates])).sort();
 
-                        headerRow.forEach((cell, idx) => {
-                            if (!cell) return;
-                            const cellStr = String(cell).trim();
-                            if (cellStr.includes("Sku명") || cellStr.includes("품목명") || cellStr.includes("SKU") || idx === 0) {
-                                skuColIdx = idx;
-                            } else if (cellStr.match(/^\d+[\/\-]\d+/) || cellStr.includes("5/") || cellStr.includes("5-")) {
-                                dateCols.push({ index: idx, label: cellStr });
-                            }
-                        });
+                                    // Resize all existing rocket data BEFORE updating new ones
+                                    Object.keys(newRocketData).forEach(k => {
+                                        newRocketData[k] = newRocketDates.map(d => {
+                                            const oldI = rocketDates.indexOf(d);
+                                            return oldI !== -1 ? newRocketData[k][oldI] : "-";
+                                        });
+                                    });
 
-                        if (skuColIdx === -1) skuColIdx = 0;
+                                    for(let i=1; i<rRows.length; i++) {
+                                        const row = rRows[i];
+                                        const sku = cleanSkuName(row[sIdx]);
+                                        if(!sku) continue;
+                                        
+                                        if(!newRocketData[sku]) newRocketData[sku] = new Array(newRocketDates.length).fill("-");
 
-                        if (dateCols.length === 0) {
-                            triggerNotification("일치하는 날짜 열(예: 5/11, 5/29)을 찾을 수 없습니다.", "error");
-                            return;
-                        }
-
-                        const newDates = dateCols.map(c => {
-                            let label = c.label;
-                            if (!label.startsWith("2026-")) {
-                                if (label.includes(" (2)")) {
-                                    label = "2026-0" + label.replace(' (2)', '') + " (2)";
-                                } else {
-                                    label = "2026-0" + label;
-                                }
-                                label = label.replace('/', '-');
-                            }
-                            return label;
-                        });
-
-                        const unionDates = Array.from(new Set([...dbDates, ...newDates])).sort();
-                        const updatedStockData = { ...dbStockData };
-                        
-                        for (let i = 1; i < rows.length; i++) {
-                            const row = rows[i];
-                            if (!row || row.length === 0) continue;
-                            
-                            const rawSku = String(row[skuColIdx] || "").trim();
-                            if (!rawSku) continue;
-                            const sku = cleanSkuName(rawSku);
-
-                            if (!Object.keys(INITIAL_STOCK_DATA).includes(sku)) continue;
-
-                            if (!updatedStockData[sku]) {
-                                updatedStockData[sku] = new Array(unionDates.length).fill(0);
-                            } else {
-                                const oldArr = updatedStockData[sku];
-                                const expandedArr = unionDates.map(d => {
-                                    const oldIdx = dbDates.indexOf(d);
-                                    return oldIdx !== -1 ? oldArr[oldIdx] : 0;
-                                });
-                                updatedStockData[sku] = expandedArr;
-                            }
-
-                            dateCols.forEach((col, cIdx) => {
-                                const val = parseInt(row[col.index]) || 0;
-                                const dateLabel = newDates[cIdx];
-                                const uIdx = unionDates.indexOf(dateLabel);
-                                if (uIdx !== -1) {
-                                    updatedStockData[sku][uIdx] = val;
-                                }
-                            });
-                        }
-
-                        setDbDates(unionDates);
-                        setDbStockData(updatedStockData);
-                        setSelectedDate(unionDates[unionDates.length - 1]);
-                        saveChangesToCloud(unionDates, updatedStockData);
-                        triggerNotification("재고현황 엑셀 연동 및 데이터베이스 갱신 성공!");
-                    } catch (err) {
-                        console.error(err);
-                        triggerNotification("엑셀 파일 파싱 중 오류가 발생했습니다.", "error");
-                    }
-                };
-                reader.readAsBinaryString(file);
-            };
-
-            const handleDispatchExcelUpload = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    try {
-                        const data = evt.target.result;
-                        const workbook = XLSX.read(data, { type: 'binary' });
-                        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-
-                        const headerRow = rows[0];
-                        let skuColIdx = -1;
-                        const dispatchCols = [];
-
-                        headerRow.forEach((cell, idx) => {
-                            if (!cell) return;
-                            const cellStr = String(cell).trim();
-                            if (cellStr.includes("Sku명") || cellStr.includes("출고") || idx === 0) {
-                                skuColIdx = idx;
-                            } else if (cellStr.match(/^\d+[\/\-]\d+/) || cellStr.includes("5/") || cellStr.includes("5-")) {
-                                dispatchCols.push({ index: idx, label: cellStr });
-                            }
-                        });
-
-                        if (skuColIdx === -1) skuColIdx = 0;
-
-                        const newIncomings = [...dbIncomings];
-
-                        for (let i = 1; i < rows.length; i++) {
-                            const row = rows[i];
-                            if (!row || row.length === 0) continue;
-                            
-                            const rawSku = String(row[skuColIdx] || "").trim();
-                            if (!rawSku) continue;
-                            const sku = cleanSkuName(rawSku);
-
-                            if (!Object.keys(INITIAL_STOCK_DATA).includes(sku)) continue;
-
-                            dispatchCols.forEach(col => {
-                                const amount = parseInt(row[col.index]) || 0;
-                                if (amount > 0) {
-                                    let type = "택배";
-                                    if (col.label.includes("용차")) type = "용차";
-
-                                    let cleanDate = col.label.split(' ')[0].split('(')[0];
-                                    if (!cleanDate.startsWith("2026-")) {
-                                        cleanDate = "2026-0" + cleanDate.replace('/', '-');
-                                    }
-
-                                    const exists = newIncomings.some(inc => inc.sku === sku && inc.date === cleanDate && inc.amount === amount);
-                                    if (!exists) {
-                                        newIncomings.push({
-                                            sku,
-                                            date: cleanDate,
-                                            amount,
-                                            type,
-                                            isRegistered: false
+                                        dCols.forEach((col, cIdx) => {
+                                            const val = row[col.index] !== undefined ? parseInt(row[col.index]) || 0 : "-";
+                                            const uIdx = newRocketDates.indexOf(parsedDates[cIdx]);
+                                            if(uIdx !== -1) newRocketData[sku][uIdx] = val;
                                         });
                                     }
                                 }
-                            });
-                        }
+                            }
+                        } catch(e) { console.warn("Rocket sheet parse warning", e); }
 
-                        setDbIncomings(newIncomings);
-                        saveChangesToCloud(dbDates, dbStockData, newIncomings);
-                        triggerNotification("공장 출고리스트 연동 완료! 미입고 현황판이 업데이트되었습니다.");
+                        // 2. ARGO STOCK PARSING (Index 1)
+                        try {
+                            const sArgo = workbook.Sheets["N배송"] || workbook.Sheets[workbook.SheetNames[1]];
+                            if(sArgo) {
+                                const aRows = XLSX.utils.sheet_to_json(sArgo, { header: 1 });
+                                if(aRows.length > 1) {
+                                    const hRow = aRows[0];
+                                    const dCols = []; let sIdx = 0;
+                                    hRow.forEach((c, i) => {
+                                        if(c && (String(c).match(/^\d+[\/\-]\d+/) || String(c).startsWith('202'))) {
+                                            let lbl = String(c).trim();
+                                            if (!lbl.startsWith("202")) {
+                                                let [m, d] = lbl.split(/[\/\-]/);
+                                                if (m && d) {
+                                                    let suffix = "";
+                                                    if (d.includes(" (2)")) { suffix = " (2)"; d = d.replace(" (2)", "").trim(); }
+                                                    lbl = `2026-${m.padStart(2, '0')}-${d.padStart(2, '0')}${suffix}`;
+                                                }
+                                            }
+                                            dCols.push({ index: i, label: lbl });
+                                        }
+                                    });
+                                    
+                                    const parsedDates = dCols.map(c => c.label);
+                                    newArgoDates = Array.from(new Set([...dbDates, ...parsedDates])).sort();
+
+                                    // Resize existing argo arrays
+                                    Object.keys(newArgoData).forEach(k => {
+                                        newArgoData[k] = newArgoDates.map(d => {
+                                            const oldI = dbDates.indexOf(d);
+                                            return oldI !== -1 ? newArgoData[k][oldI] : 0;
+                                        });
+                                    });
+
+                                    for(let i=1; i<aRows.length; i++) {
+                                        const row = aRows[i];
+                                        const sku = cleanSkuName(row[sIdx]);
+                                        if(!sku || !Object.keys(INITIAL_STOCK_DATA).includes(sku)) continue;
+                                        
+                                        if(!newArgoData[sku]) newArgoData[sku] = new Array(newArgoDates.length).fill(0);
+
+                                        dCols.forEach((col, cIdx) => {
+                                            const val = parseInt(row[col.index]) || 0;
+                                            const uIdx = newArgoDates.indexOf(parsedDates[cIdx]);
+                                            if(uIdx !== -1) newArgoData[sku][uIdx] = val;
+                                        });
+                                    }
+                                }
+                            }
+                        } catch(e) { console.warn("Argo sheet parse warning", e); }
+
+                        // 3. DISPATCH PARSING (Index 2)
+                        try {
+                            const sDisp = workbook.Sheets["아르고발송"] || workbook.Sheets[workbook.SheetNames[2]];
+                            if(sDisp) {
+                                const dRows = XLSX.utils.sheet_to_json(sDisp, { header: 1 });
+                                if(dRows.length > 1) {
+                                    const hRow = dRows[0];
+                                    const dCols = []; let sIdx = 0;
+                                    hRow.forEach((c, i) => {
+                                        if(c && (String(c).match(/^\d+[\/\-]\d+/) || String(c).startsWith('202'))) {
+                                            dCols.push({ index: i, label: String(c).trim() });
+                                        }
+                                    });
+
+                                    for(let i=1; i<dRows.length; i++) {
+                                        const row = dRows[i];
+                                        const sku = cleanSkuName(row[sIdx]);
+                                        if(!sku || !Object.keys(INITIAL_STOCK_DATA).includes(sku)) continue;
+
+                                        dCols.forEach(col => {
+                                            const amount = parseInt(row[col.index]) || 0;
+                                            if(amount > 0) {
+                                                let type = col.label.includes("용차") ? "용차" : "택배";
+                                                let cleanDate = col.label.split(' ')[0].split('(')[0];
+                                                if (!cleanDate.startsWith("2026-")) {
+                                                    let [m, d] = cleanDate.split(/[\/\-]/);
+                                                    if (m && d) cleanDate = `2026-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+                                                }
+
+                                                if(!newIncomings.some(inc => inc.sku === sku && inc.date === cleanDate && inc.amount === amount)) {
+                                                    newIncomings.push({ sku, date: cleanDate, amount, type, isRegistered: false });
+                                                }
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                        } catch(e) { console.warn("Dispatch sheet parse warning", e); }
+
+                        saveChangesToCloud(newArgoDates, newArgoData, newIncomings, newRocketDates, newRocketData);
+                        setSelectedMonth(newArgoDates[newArgoDates.length - 1].substring(0, 7)); // Update month to latest
+                        triggerNotification("🎉 엑셀 1장으로 로켓/N배송/출고리스트 전체 자동 병합 완료!");
                     } catch (err) {
                         console.error(err);
-                        triggerNotification("출고 엑셀 처리 중 오류가 발생했습니다.", "error");
+                        triggerNotification("엑셀 파일 파싱 중 치명적 오류가 발생했습니다.", "error");
                     }
                 };
                 reader.readAsBinaryString(file);
@@ -763,148 +571,43 @@
 
             const toggleIncomingRegistration = (index) => {
                 const updatedIncomings = [...dbIncomings];
-                const inc = updatedIncomings[index];
-                
-                if (inc.isRegistered) return;
-                
-                inc.isRegistered = true;
-                
-                const updatedStockData = { ...dbStockData };
-                if (updatedStockData[inc.sku]) {
-                    const arr = [...updatedStockData[inc.sku]];
-                    arr[arr.length - 1] += inc.amount; 
-                    updatedStockData[inc.sku] = arr;
-                    setDbStockData(updatedStockData);
-                }
-                
+                updatedIncomings[index].isRegistered = true;
                 setDbIncomings(updatedIncomings);
-                saveChangesToCloud(dbDates, updatedStockData, updatedIncomings);
-                triggerNotification(`${inc.sku} 입고 완료! 최신 재고량에 +${inc.amount} 자동 합산되었습니다.`, "success");
+                saveChangesToCloud(dbDates, dbStockData, updatedIncomings, rocketDates, rocketData);
+                triggerNotification(`${updatedIncomings[index].sku} 입고 완료처리 되었습니다.`);
             };
 
-            // Selected SKU historical trends data points
+            const addSimulation = (e) => {
+                e.preventDefault();
+                if (simAmount <= 0) return;
+                const newSim = { id: Date.now(), sku: simSku, dispatchDate: simDispatchDate, type: simType, amount: parseInt(simAmount) };
+                setSimulations([...simulations, newSim]);
+                triggerNotification(`가상 시뮬레이션 입고 등록 완료.`);
+            };
+
             const skuHistoryPoints = useMemo(() => {
                 if (!selectedSku || !dbStockData[selectedSku]) return [];
-                return dbDates.slice(0, selectedDateIndex + 1).map((dt, idx) => ({
-                    date: dt,
-                    stock: dbStockData[selectedSku][idx] || 0
-                }));
+                return dbDates.slice(0, selectedDateIndex + 1).map((dt, idx) => ({ date: dt, stock: dbStockData[selectedSku][idx] || 0 }));
             }, [selectedSku, selectedDateIndex, dbStockData, dbDates]);
 
-            // Handle Column Addition in Editor
-            const handleAddColumn = () => {
-                if (dbDates.includes(newColDate)) {
-                    triggerNotification("이미 존재하는 날짜입니다.", "error");
-                    return;
-                }
-                const updatedDates = [...dbDates, newColDate].sort();
-                const insertIdx = updatedDates.indexOf(newColDate);
+            const monthOptions = availableMonths.map(m => ({ value: m, label: `${m.split('-')[1]}월 이력보기` }));
+            const dateOptions = monthFilteredDates.map(dt => ({ value: dt, label: `${dt.replace('2026-', '')} ${dt === dbDates[dbDates.length-1] ? "(최신)" : ""}` })).reverse();
+            const adsOptions = [ { value: 3, label: "최근 3일 실적" }, { value: 4, label: "최근 4일 실적 (안전)" }, { value: 5, label: "최근 5일 실적" } ];
 
-                const updatedStockData = {};
-                Object.keys(dbStockData).forEach(sku => {
-                    const arr = [...dbStockData[sku]];
-                    const defaultVal = arr[arr.length - 1] || 0;
-                    arr.splice(insertIdx, 0, defaultVal);
-                    updatedStockData[sku] = arr;
-                });
-
-                setDbDates(updatedDates);
-                setDbStockData(updatedStockData);
-                setSelectedDate(newColDate);
-                saveChangesToCloud(updatedDates, updatedStockData);
-                triggerNotification(`새 날짜 열 [${newColDate}]이 추가되었습니다.`);
-            };
-
-            // Handle Single Cell Stock Update in Editor
-            const handleCellChange = (sku, val) => {
-                const updatedStocks = { ...editorStocks, [sku]: parseInt(val) || 0 };
-                setEditorStocks(updatedStocks);
-            };
-
-            // Commit Edited values to Local and Cloud DB
-            const handleCommitEdit = () => {
-                const updatedStockData = { ...dbStockData };
-                Object.keys(editorStocks).forEach(sku => {
-                    if (updatedStockData[sku]) {
-                        const arr = [...updatedStockData[sku]];
-                        arr[selectedDateIndex] = editorStocks[sku];
-                        updatedStockData[sku] = arr;
-                    }
-                });
-                setDbStockData(updatedStockData);
-                saveChangesToCloud(dbDates, updatedStockData);
-                triggerNotification("수동 변경사항이 저장되었습니다.", "success");
-            };
-
-            // --- DATE OPTIONS WITH HISTORY TOGGLE ---
-            const visibleDates = showAllHistory ? dbDates : dbDates.slice(-14);
-            const dateOptions = useMemo(() => {
-                return [...visibleDates].reverse().map(dt => ({
-                    value: dt,
-                    label: `${dt.replace('2026-', '')} (${dt === dbDates[dbDates.length - 1] ? "최신" : "히스토리"})`
-                }));
-            }, [visibleDates, dbDates]);
-
-            const adsOptions = [
-                { value: 3, label: "최근 3일 실적" },
-                { value: 4, label: "최근 4일 실적 (안전)" },
-                { value: 5, label: "최근 5일 실적" },
-                { value: 7, label: "최근 7일 실적" },
-                { value: 10, label: "최근 10일 실적" }
-            ];
-
-            // 🔒 LOGIN HANDLER
-            const handleLogin = (e) => {
-                e.preventDefault();
-                if (pwdInput === SECRET_PASSWORD) {
-                    setIsLoggedIn(true);
-                } else {
-                    setLoginError(true);
-                    setPwdInput("");
-                }
-            };
-
-            // 🔒 CONDITIONAL RENDER: LOGIN SCREEN
+            // 🔒 LOGIN RENDER
             if (!isLoggedIn) {
                 return (
                     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 relative overflow-hidden">
-                        {/* Decorative Background */}
-                        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-                        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-emerald-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-                        
-                        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl text-center relative z-10 border border-slate-100">
-                            <div className="w-16 h-16 bg-indigo-50 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-sm border border-indigo-100">
-                                <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                </svg>
-                            </div>
+                        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
+                        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl text-center relative z-10">
                             <h1 className="text-2xl font-extrabold text-slate-800 mb-2">N배송(아르고) 재고현황</h1>
-                            <p className="text-sm font-medium text-slate-500 mb-8">내부 인원 전용 대시보드입니다.<br/>접속 비밀번호를 입력해주세요.</p>
-                            
+                            <p className="text-sm text-slate-500 mb-8">내부 인원 전용 대시보드입니다.</p>
                             <form onSubmit={handleLogin} className="space-y-4">
-                                <div>
-                                    <input
-                                        type="password"
-                                        value={pwdInput}
-                                        onChange={(e) => { setPwdInput(e.target.value); setLoginError(false); }}
-                                        placeholder="비밀번호 입력"
-                                        autoFocus
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-center font-bold tracking-widest text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all placeholder:font-normal placeholder:tracking-normal"
-                                    />
-                                </div>
-                                {loginError && (
-                                    <p className="text-xs text-red-500 font-bold animate-bounce">⚠️ 비밀번호가 일치하지 않습니다.</p>
-                                )}
-                                <button 
-                                    type="submit" 
-                                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3.5 rounded-xl shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
-                                >
-                                    접속하기
-                                </button>
+                                <input type="password" value={pwdInput} onChange={(e) => { setPwdInput(e.target.value); setLoginError(false); }} placeholder="비밀번호 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-center font-bold" />
+                                {loginError && <p className="text-xs text-red-500 font-bold animate-bounce">⚠️ 비밀번호가 일치하지 않습니다.</p>}
+                                <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-xl shadow-lg">접속하기</button>
                             </form>
-                            <div className="mt-8 pt-6 border-t border-slate-100">
-                                <p className="text-xs text-slate-400">© 2026 요미몬(주) 물류팀</p>
-                            </div>
+                            <p className="text-xs text-slate-400 mt-6">© 2026 요미몬(주)</p>
                         </div>
                     </div>
                 );
@@ -912,712 +615,309 @@
 
             // 🔓 MAIN DASHBOARD RENDER
             return (
-                <div className="min-h-screen flex flex-col relative">
-                    
+                <div className="min-h-screen flex flex-col relative z-0">
                     {/* Header */}
-                    <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg py-5 px-6 md:px-10 relative z-50">
-                        <div className="max-w-full mx-auto flex flex-col xl:flex-row items-center justify-between gap-4">
+                    <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
+                        <div className="max-w-full mx-auto flex flex-col xl:flex-row items-center justify-between gap-4 pb-5 border-b border-white/10">
                             <div className="flex flex-col md:flex-row items-center gap-4 w-full xl:w-auto">
-                                <div className="p-2.5 bg-indigo-500/20 rounded-xl border border-indigo-500/30 shrink-0">
-                                    <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                                    </svg>
-                                </div>
                                 <div className="text-center md:text-left">
                                     <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
-                                        <h1 className="text-2xl font-bold tracking-tight">N배송(아르고) 재고현황 <span className="text-indigo-400 font-extrabold">(v34)</span></h1>
-                                        {cloudSync === "connecting" && <span className="text-xs bg-indigo-600/50 text-indigo-200 px-2.5 py-0.5 rounded-full font-bold animate-pulse">☁️ 실시간 연결중...</span>}
-                                        {cloudSync === "synced" && <span className="text-xs bg-emerald-600/50 text-emerald-100 px-2.5 py-0.5 rounded-full font-bold">☁️ 실시간 연동 완료</span>}
-                                        {cloudSync === "local" && <span className="text-xs bg-amber-600/50 text-amber-100 px-2.5 py-0.5 rounded-full font-bold">📂 로컬 오프라인 모드</span>}
-                                        {cloudSync === "error" && <span className="text-xs bg-red-600/50 text-red-100 px-2.5 py-0.5 rounded-full font-bold animate-bounce">⚠️ 클라우드 연결 실패</span>}
+                                        <h1 className="text-2xl font-bold tracking-tight">N배송(아르고) 재고현황 <span className="text-indigo-400 font-extrabold">(v1)</span></h1>
+                                        {cloudSync === "github" ? <span className="text-xs bg-emerald-600/50 text-emerald-100 px-2.5 py-0.5 rounded-full font-bold">✅ 깃허브 실시간 연동 정상</span> 
+                                        : cloudSync === "synced" ? <span className="text-xs bg-emerald-600/50 text-emerald-100 px-2.5 py-0.5 rounded-full font-bold">☁️ 실시간 연동 완료</span> 
+                                        : <span className="text-xs bg-indigo-600/50 text-indigo-100 px-2.5 py-0.5 rounded-full font-bold animate-pulse">☁️ 연결 중...</span>}
                                     </div>
-                                    <p className="text-xs text-slate-400 mt-1">
-                                        {cloudSync === "local" ? (
-                                            <span className="text-amber-300 font-bold bg-amber-900/40 px-2 py-0.5 rounded">⚠️ 보안키 누락 - 깃허브 업로드용 코드를 복사하여 사용하세요</span>
-                                        ) : (
-                                            "네이버 N배송 입고 및 품절 예측 시뮬레이터 v2.6 (Serverless Direct Cloud Push)"
-                                        )}
-                                    </p>
                                 </div>
                             </div>
-
+                            
                             {/* Actions bar */}
                             <div className="flex flex-wrap items-center justify-center gap-3 w-full xl:w-auto">
-                                <div className="flex items-center gap-2 bg-slate-800 rounded-xl p-1 border border-slate-700">
-                                    <button 
-                                        onClick={() => {
-                                            if (showAllHistory && !dbDates.slice(-14).includes(selectedDate)) {
-                                                setSelectedDate(dbDates[dbDates.length - 1]);
-                                            }
-                                            setShowAllHistory(!showAllHistory);
-                                        }} 
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${showAllHistory ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'}`}
-                                    >
-                                        {showAllHistory ? "최근 14일만 보기" : "과거 이력 전체보기"}
-                                    </button>
-                                    <ReactCustomDropdown 
-                                        label="조회 기준일" 
-                                        value={selectedDate} 
-                                        options={dateOptions} 
-                                        onChange={(val) => {
-                                            setSelectedDate(val);
-                                            triggerNotification(`${val} 재고 데이터가 적용되었습니다.`, "info");
-                                        }}
-                                    />
+                                <div className="flex items-center gap-2 bg-slate-800 rounded-xl p-1 border border-slate-700 shadow-inner">
+                                    <ReactCustomDropdown value={selectedMonth} options={monthOptions} onChange={setSelectedMonth} />
+                                    <div className="w-px h-6 bg-slate-700"></div>
+                                    <ReactCustomDropdown value={selectedDate} options={dateOptions} onChange={(val) => { setSelectedDate(val); triggerNotification(`${val} 데이터가 적용되었습니다.`); }} />
                                 </div>
-
-                                <ReactCustomDropdown 
-                                    label="ADS 산정" 
-                                    value={adsWindow} 
-                                    options={adsOptions} 
-                                    onChange={(val) => {
-                                        setAdsWindow(val);
-                                        triggerNotification(`최근 ${val}단계 실적 판매량 기준으로 일평균 판매량(ADS)을 계산합니다.`, "info");
-                                    }}
-                                />
-                                
-                                {/* Lock Button to clear session */}
-                                <button
-                                    onClick={() => {
-                                        setIsLoggedIn(false);
-                                        setPwdInput("");
-                                    }}
-                                    className="ml-2 bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 p-2 rounded-xl border border-slate-700 hover:border-red-500/30 transition-all cursor-pointer"
-                                    title="화면 잠그기"
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                    </svg>
-                                </button>
+                                <ReactCustomDropdown label="ADS 산정" value={adsWindow} options={adsOptions} onChange={setAdsWindow} />
                             </div>
+                        </div>
+
+                        {/* View Tabs */}
+                        <div className="flex gap-2 max-w-full mx-auto mt-0 px-2">
+                            <button onClick={() => setCurrentView('argo')} className={`px-6 py-3 font-extrabold text-sm rounded-t-xl tab-btn ${currentView === 'argo' ? 'bg-slate-50 text-indigo-900 border-t-4 border-indigo-600' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white mt-1'}`}>
+                                📦 N배송(아르고) 재고 분석
+                            </button>
+                            <button onClick={() => setCurrentView('rocket')} className={`px-6 py-3 font-extrabold text-sm rounded-t-xl flex items-center gap-2 tab-btn ${currentView === 'rocket' ? 'bg-slate-50 text-blue-900 border-t-4 border-blue-600' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white mt-1'}`}>
+                                🚀 로켓배송 재고
+                            </button>
                         </div>
                     </header>
 
-                    {/* Notification Alert Box */}
                     {notification && (
                         <div className="fixed top-24 right-6 z-[200] animate-bounce">
-                            <div className={`px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border text-sm ${
-                                notification.type === "error" ? "bg-red-50 border-red-200 text-red-800" :
-                                notification.type === "info" ? "bg-blue-50 border-blue-200 text-blue-800" :
-                                "bg-emerald-50 border-emerald-200 text-emerald-800"
-                            }`}>
-                                <span className="text-lg">
-                                    {notification.type === "error" ? "⚠️" : notification.type === "info" ? "ℹ️" : "✅"}
-                                </span>
+                            <div className={`px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border text-sm ${notification.type === "error" ? "bg-red-50 border-red-200 text-red-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>
                                 <span className="font-medium">{notification.message}</span>
                             </div>
                         </div>
                     )}
 
-                    {/* Main Content Area */}
-                    <main className="flex-grow w-full max-w-full px-6 md:px-10 py-6 space-y-6">
-                        
-                        {/* Auto-Collapsing Pending Dispatch Section */}
-                        {pendingDispatches.length === 0 ? (
-                            <div className="bg-slate-100 border border-slate-200 rounded-2xl px-6 py-3 flex items-center justify-between opacity-80 cursor-default shadow-sm transition-all duration-500">
-                                <h3 className="text-sm font-extrabold text-slate-500 flex items-center gap-2">
-                                    <span>🎉 모든 공장 출고건이 아르고 센터에 입고 완료되었습니다.</span>
-                                </h3>
-                                <span className="text-xs font-bold text-slate-400 bg-white border border-slate-200 px-3 py-1 rounded-lg">
-                                    미입고 대기 0건
-                                </span>
-                            </div>
-                        ) : (
-                            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-orange-200 rounded-3xl p-6 shadow-sm transition-all duration-500 animate-fade-in">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-orange-200/50 pb-4 mb-4">
-                                    <div>
-                                        <h3 className="text-lg font-extrabold text-orange-900 flex items-center gap-2">
-                                            <span>⚠️ 공장 출고완료 미입고 대기현황</span>
-                                            <span className="text-xs bg-orange-200 text-orange-800 font-black px-2.5 py-0.5 rounded-full">실시간 연동</span>
-                                        </h3>
-                                        <p className="text-xs text-orange-700 mt-0.5">공장에서는 출발했으나 센터 재고표엔 비반영된 물량입니다. 완료 클릭 시 표의 실재고에 즉각 합산되어 ADS가 정상 유지됩니다.</p>
-                                    </div>
-                                    <span className="text-xs font-bold text-orange-800 bg-white/80 border border-orange-200 px-3.5 py-1.5 rounded-xl">
-                                        총 {pendingDispatches.length}건 미입고 대기 중
-                                    </span>
+                    {/* ROCKET VIEW */}
+                    {currentView === 'rocket' && (
+                        <main className="flex-grow w-full max-w-full px-6 md:px-10 py-8 bg-slate-50 animate-fade-in">
+                            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                                <div className="p-6 border-b border-slate-100 bg-blue-50/30">
+                                    <h2 className="font-extrabold text-slate-800 text-xl flex items-center gap-2">🚀 로켓배송 전용 실시간 재고 상황판</h2>
+                                    <p className="text-sm text-slate-500 mt-1">엑셀 첫 번째 시트의 원본 데이터가 날짜별로 표시됩니다.</p>
                                 </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                                    {pendingDispatches.map((inc) => {
-                                        const globalIdx = dbIncomings.findIndex(x => x.sku === inc.sku && x.date === inc.date && x.amount === inc.amount);
-                                        return (
-                                            <div key={globalIdx} className="bg-white p-4 rounded-2xl border border-orange-200/60 shadow-sm flex flex-col justify-between gap-3 hover:scale-[1.02] transition-transform">
-                                                <div>
-                                                    <div className="flex items-center justify-between">
-                                                        <span className="text-xxs font-black uppercase tracking-wider bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md">
-                                                            {inc.type} 수송
-                                                        </span>
-                                                        <span className="text-xs font-bold text-slate-400">출고일: {inc.date.replace('2026-', '')}</span>
-                                                    </div>
-                                                    <h4 className="font-extrabold text-slate-800 text-sm mt-2">{inc.sku}</h4>
-                                                    <div className="flex items-baseline gap-1 mt-1">
-                                                        <span className="text-2xl font-black text-orange-600">+{inc.amount.toLocaleString()}</span>
-                                                        <span className="text-xs font-bold text-slate-500">개 대기</span>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 mt-2">
-                                                    <div>
-                                                        <span className="text-[10px] text-slate-400 block font-bold">도킹 완료예상</span>
-                                                        <span className="text-xs font-black text-slate-700">🚚 {inc.arrivalDateStr}</span>
-                                                    </div>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            toggleIncomingRegistration(globalIdx);
-                                                        }}
-                                                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3 py-2 rounded-lg transition-colors cursor-pointer active:scale-95"
-                                                    >
-                                                        입고 완료처리 ✓
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Summary metrics row */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">🚨 7일내 긴급 대응</span>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-4xl font-extrabold text-red-600">{summaryMetrics.criticalCount}</span>
-                                    <span className="text-sm font-medium text-slate-500">개 SKU</span>
-                                </div>
-                                <p className="text-xs text-red-500/80 font-medium mt-2">즉각 발주 및 용차 수배 필요</p>
-                            </div>
-
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">⚠️ 30일내 보충 경고</span>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-4xl font-extrabold text-amber-500">{summaryMetrics.warningCount}</span>
-                                    <span className="text-sm font-medium text-slate-500">개 SKU</span>
-                                </div>
-                                <p className="text-xs text-amber-600/80 font-medium mt-2">한달분 재고 비축 조율 대상</p>
-                            </div>
-
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">📦 보관 총 재고수량</span>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-4xl font-extrabold text-indigo-600">{summaryMetrics.totalStock.toLocaleString()}</span>
-                                    <span className="text-sm font-medium text-slate-500">개</span>
-                                </div>
-                                <p className="text-xs text-slate-400 font-medium mt-2">전체 보관비 정산 기준 수량</p>
-                            </div>
-
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
-                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">🚚 총 일평균 판매량(ADS)</span>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-4xl font-extrabold text-teal-600">{summaryMetrics.totalDailySales}</span>
-                                    <span className="text-sm font-medium text-slate-500">개 / 일</span>
-                                </div>
-                                <p className="text-xs text-teal-600/80 font-medium mt-2">지속적으로 감축 중인 총 물량</p>
-                            </div>
-                        </div>
-
-                        {/* Interactive Area: 9/12 Left Table, 3/12 Right Detail panel */}
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                            
-                            {/* Inventory Table Container (Left Col 9/12) */}
-                            <div className="lg:col-span-9 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-                                
-                                {/* Filters Header */}
-                                <div className="p-6 border-b border-slate-100 bg-slate-50/50 space-y-4">
-                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                                        <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                                            <span>📋 실시간 입출고/품절 예측 상황판</span>
-                                            <span className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-bold">
-                                                {filteredSkuList.length}개 품목 표시중
-                                            </span>
-                                        </h2>
-                                        
-                                        {/* Category Quick Filter */}
-                                        <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0">
-                                            {["ALL", "클레이", "플레이돌", "와우펜", "키즈탭", "기타"].map(cat => (
-                                                <button
-                                                    key={cat}
-                                                    onClick={() => setCategoryFilter(cat)}
-                                                    className={`px-4 py-1.5 text-xs md:text-sm font-bold rounded-xl transition-all ${
-                                                        categoryFilter === cat 
-                                                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" 
-                                                        : "bg-slate-200/60 text-slate-600 hover:bg-slate-200"
-                                                    }`}
-                                                >
-                                                    {cat === "ALL" ? "전체" : cat}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Action Search Row */}
-                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                                        <div className="md:col-span-6 relative">
-                                            <input
-                                                type="text"
-                                                placeholder="품목명 검색 (예: 안심클레이)..."
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.target.value)}
-                                                className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                            />
-                                            <span className="absolute left-3.5 top-3 text-slate-400">🔍</span>
-                                        </div>
-
-                                        <div className="md:col-span-6 flex flex-wrap items-center justify-end gap-x-6 gap-y-1">
-                                            <label className="flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer select-none">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={onlyCritical30}
-                                                    onChange={(e) => setOnlyCritical30(e.target.checked)}
-                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-                                                />
-                                                <span>⏳ 30일 이내 품절 예정만</span>
-                                            </label>
-
-                                            <label className="flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer select-none">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={excludeZeroStock}
-                                                    onChange={(e) => setExcludeZeroStock(e.target.checked)}
-                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-                                                />
-                                                <span>🚫 재고 0개 품목 자동 제외</span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Table View - Expanded Width & Height */}
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
+                                <div className="overflow-x-auto p-6">
+                                    <table className="w-full text-left border-collapse border border-slate-200 rounded-xl">
                                         <thead>
-                                            <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 text-xs font-extrabold uppercase tracking-wider">
-                                                <th className="py-4 px-6">품목 카테고리</th>
-                                                <th className="py-4 px-6 text-sm">품목명 (SKU)</th>
-                                                <th className="py-4 px-6 text-center text-sm">현재고 ({selectedDate.replace('2026-', '')})</th>
-                                                <th className="py-4 px-6 text-center text-sm">ADS (일일)</th>
-                                                <th className="py-4 px-6 text-sm">예상 품절일</th>
-                                                <th className="py-4 px-6 text-sm">잔여기간</th>
-                                                <th className="py-4 px-6 text-right text-sm">보충 필요량 (30일분)</th>
+                                            <tr className="bg-slate-100 text-slate-600 text-sm font-bold uppercase">
+                                                <th className="py-4 px-6 border-b border-slate-200 bg-slate-100 sticky left-0 z-10 shadow-[1px_0_0_#e2e8f0]">품목명 (SKU)</th>
+                                                {rocketDates.map(d => <th key={d} className="py-4 px-6 border-b border-slate-200 text-center whitespace-nowrap">{d.substring(5)}</th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 text-sm">
-                                            {filteredSkuList.length > 0 ? (
-                                                filteredSkuList.map(item => {
-                                                    const isSelected = selectedSku === item.sku;
-                                                    const isCritical = item.daysRemaining <= 10;
-                                                    const isWarning = item.daysRemaining > 10 && item.daysRemaining <= 30;
-                                                    
-                                                    return (
-                                                        <tr 
-                                                            key={item.sku}
-                                                            onClick={() => setSelectedSku(item.sku)}
-                                                            className={`hover:bg-indigo-50/40 cursor-pointer transition-all border-l-4 ${
-                                                                isSelected ? "bg-indigo-50/80 font-medium border-l-indigo-600" : "border-l-transparent"
-                                                            }`}
-                                                        >
-                                                            <td className="py-5 px-6">
-                                                                <span className={`inline-block px-3 py-1 rounded-lg text-xs font-bold uppercase ${
-                                                                    item.category === "클레이" ? "bg-amber-100 text-amber-800" :
-                                                                    item.category === "플레이돌" ? "bg-teal-100 text-teal-800" :
-                                                                    item.category === "와우펜" ? "bg-blue-100 text-blue-800" :
-                                                                    item.category === "키즈탭" ? "bg-purple-100 text-purple-800" :
-                                                                    "bg-slate-100 text-slate-700"
-                                                                }`}>
-                                                                    {item.category}
-                                                                </span>
-                                                            </td>
-                                                            <td className="py-5 px-6 font-bold text-slate-900 text-sm md:text-base">
-                                                                {item.sku}
-                                                            </td>
-                                                            <td className="py-5 px-6 text-center font-extrabold text-slate-900 text-base">
-                                                                {item.currentStock}개
-                                                                {item.simulatedArrivals > 0 && (
-                                                                    <span className="block text-xs text-emerald-600 font-extrabold mt-1">
-                                                                        (+{item.simulatedArrivals}개 예정)
-                                                                    </span>
-                                                                )}
-                                                            </td>
-                                                            <td className="py-5 px-6 text-center text-slate-700 font-mono text-base font-semibold">
-                                                                {item.ads.toFixed(2)}
-                                                            </td>
-                                                            <td className="py-5 px-6">
-                                                                <span className={`font-mono text-sm px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 w-max ${
-                                                                    isCritical ? "bg-red-100 text-red-800 shadow-sm" :
-                                                                    isWarning ? "bg-amber-100 text-amber-800 shadow-sm" :
-                                                                    "text-slate-600"
-                                                                }`}>
-                                                                    📅 {item.expectedStockoutDate}
-                                                                </span>
-                                                            </td>
-                                                            <td className="py-5 px-6">
-                                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold ${
-                                                                    isCritical ? "bg-red-200 text-red-900" :
-                                                                    isWarning ? "bg-amber-200 text-amber-900" :
-                                                                    "bg-emerald-200 text-emerald-900"
-                                                                }`}>
-                                                                    {item.displayRemainingText}
-                                                                </span>
-                                                            </td>
-                                                            <td className="py-5 px-6 text-right font-extrabold text-indigo-700 text-base">
-                                                                {item.replenishment30.toLocaleString()}개
-                                                                <span className="block text-xs text-slate-400 font-medium mt-1">
-                                                                    약 {Math.ceil(item.replenishment30 / 50)} Pallets
-                                                                </span>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })
-                                            ) : (
-                                                <tr>
-                                                    <td colSpan="7" className="py-16 text-center text-slate-400 font-medium">
-                                                        조건에 만족하는 품목이 없습니다.
-                                                    </td>
+                                            {Object.keys(rocketData).map((sku, idx) => (
+                                                <tr key={sku} className="hover:bg-blue-50/40 transition-colors">
+                                                    <td className="py-4 px-6 font-extrabold text-slate-800 bg-white sticky left-0 z-10 shadow-[1px_0_0_#f1f5f9] whitespace-nowrap">{sku}</td>
+                                                    {rocketData[sku].map((val, i) => (
+                                                        <td key={i} className={`py-4 px-6 text-center font-bold ${val === "-" ? "text-slate-300" : val == 0 ? "text-red-500" : "text-slate-700"}`}>
+                                                            {val !== "-" ? Number(val).toLocaleString() : "-"}
+                                                        </td>
+                                                    ))}
                                                 </tr>
-                                            )}
+                                            ))}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
+                        </main>
+                    )}
 
-                            {/* SKU Details & Simulation Panel (Right Col 3/12) */}
-                            <div className="lg:col-span-3 space-y-6">
-                                
-                                {/* SKU Trend & Detail Display Card */}
-                                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest">📈 디테일 분석 및 재고추이</span>
-                                        <span className="text-xs text-slate-400 font-bold">실시간 연동</span>
-                                    </div>
-                                    
+                    {/* ARGO VIEW */}
+                    {currentView === 'argo' && (
+                        <main className="flex-grow w-full max-w-full px-6 md:px-10 py-6 space-y-6 animate-fade-in">
+                            {/* Pending Dispatch Section */}
+                            <div className={`transition-all duration-300 ${pendingDispatches.length > 0 ? 'bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-orange-200' : 'bg-white border-2 border-slate-200'} rounded-3xl shadow-sm overflow-hidden`}>
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 md:p-6">
                                     <div>
-                                        <h3 className="text-xl font-bold text-slate-900 leading-tight">{selectedSku}</h3>
-                                        <p className="text-xs text-slate-400 mt-1">카테고리: {CATEGORIES[selectedSku] || "미분류"}</p>
+                                        <h3 className={`text-lg font-extrabold flex items-center gap-2 ${pendingDispatches.length > 0 ? 'text-orange-900' : 'text-slate-600'}`}>
+                                            {pendingDispatches.length > 0 ? <span>⚠️ 공장 출고완료 미입고 대기현황</span> : <span>🎉 모든 출고건이 아르고에 입고 완료되었습니다.</span>}
+                                        </h3>
                                     </div>
+                                    {pendingDispatches.length > 0 && (
+                                        <span className="text-xs font-bold text-orange-800 bg-white px-3.5 py-1.5 rounded-xl border border-orange-200">
+                                            총 {pendingDispatches.length}건 대기 중
+                                        </span>
+                                    )}
+                                </div>
 
-                                    {/* Simple Mini History Chart */}
-                                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                                        <span className="text-xs font-semibold text-slate-500 block mb-3">과거 재고 수준 추이 ({selectedDate.replace('2026-', '')} 기준)</span>
-                                        <div className="h-36 w-full flex items-end justify-between gap-1 pt-4">
-                                            {skuHistoryPoints.map((pt, idx) => {
-                                                const maxStock = Math.max(...skuHistoryPoints.map(p => p.stock), 50);
-                                                const barHeight = `${(pt.stock / maxStock) * 100}%`;
+                                {pendingDispatches.length > 0 && (
+                                    <div className="p-4 md:p-6 pt-0 border-t border-orange-200/50 mt-2">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
+                                            {pendingDispatches.map((inc) => {
+                                                const globalIdx = dbIncomings.findIndex(x => x.sku === inc.sku && x.date === inc.date && x.amount === inc.amount);
                                                 return (
-                                                    <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer">
-                                                        <div 
-                                                            style={{ height: barHeight }} 
-                                                            className={`w-full rounded-t-sm transition-all duration-300 ${
-                                                                idx === skuHistoryPoints.length - 1 
-                                                                ? "bg-indigo-600 group-hover:bg-indigo-700" 
-                                                                : "bg-slate-300 group-hover:bg-slate-400"
-                                                            }`}
-                                                        ></div>
-                                                        <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white text-xxs py-0.5 px-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
-                                                            {pt.stock}개 ({pt.date.slice(5)})
+                                                    <div key={globalIdx} className="bg-white p-4 rounded-2xl border border-orange-200/60 shadow-sm flex flex-col gap-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-xxs font-black uppercase tracking-wider bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md">{inc.type} 수송</span>
+                                                            <span className="text-xs font-bold text-slate-400">출고: {inc.date.slice(5)}</span>
                                                         </div>
-                                                        <span className="text-[9px] text-slate-400 mt-1 font-mono">{pt.date.slice(5)}</span>
+                                                        <h4 className="font-extrabold text-slate-800 text-sm">{inc.sku}</h4>
+                                                        <span className="text-2xl font-black text-orange-600">+{inc.amount.toLocaleString()} <span className="text-xs text-slate-500">개 대기</span></span>
+                                                        <button onClick={() => toggleIncomingRegistration(globalIdx)} className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3 py-2 rounded-lg transition-colors">입고 완료처리 ✓</button>
                                                     </div>
                                                 );
                                             })}
                                         </div>
                                     </div>
-
-                                    {/* Simulated Stock Information Summary */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                                            <span className="text-xxs font-bold text-slate-400 uppercase block">보충필요(1달)</span>
-                                            <span className="block text-lg font-extrabold text-indigo-700 mt-1">
-                                                {calculateSkuMetrics(selectedSku, selectedDateIndex).replenishment30}개
-                                            </span>
-                                        </div>
-                                        <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-100">
-                                            <span className="text-xxs font-bold text-slate-400 uppercase block">예상소진일수</span>
-                                            <span className="block text-lg font-extrabold text-amber-700 mt-1">
-                                                {calculateSkuMetrics(selectedSku, selectedDateIndex).displayRemainingText}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Simulation Scheduler Form */}
-                                <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-                                    <div className="flex items-center justify-between border-b border-slate-50 pb-2">
-                                        <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
-                                            <span>🚚 입고 시뮬레이션</span>
-                                            <span className="text-xxs bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">검증기</span>
-                                        </h4>
-                                    </div>
-
-                                    <form onSubmit={addSimulation} className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">대상 품목 선택</label>
-                                            <select
-                                                value={simSku}
-                                                onChange={(e) => setSimSku(e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
-                                            >
-                                                {Object.keys(dbStockData).filter(k => k !== "사운드차트 3종 패키지").map(sku => (
-                                                    <option key={sku} value={sku}>{sku}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 gap-3">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 mb-1">출고리스트 기입일</label>
-                                                <input
-                                                    type="date"
-                                                    value={simDispatchDate}
-                                                    onChange={(e) => setSimDispatchDate(e.target.value)}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 mb-1">배송 형태</label>
-                                                <select
-                                                    value={simType}
-                                                    onChange={(e) => setSimType(e.target.value)}
-                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
-                                                >
-                                                    <option value="택배">택배 (2~3일후 입고)</option>
-                                                    <option value="용차">용차 (즉시 당일입고)</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">수량 (개)</label>
-                                            <input
-                                                type="number"
-                                                value={simAmount}
-                                                onChange={(e) => setSimAmount(e.target.value)}
-                                                placeholder="예: 200"
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                            />
-                                        </div>
-
-                                        <button
-                                            type="submit"
-                                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 px-4 rounded-xl text-sm shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all text-center cursor-pointer"
-                                        >
-                                            시뮬레이션 가동
-                                        </button>
-                                    </form>
-                                </div>
-
-                            </div>
-                        </div>
-
-                        {/* Drag and Drop Excel and Database Administration Panel */}
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                            
-                            {/* Drag and Drop Excel Upload Center */}
-                            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
-                                <div>
-                                    <h4 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
-                                        <span>📊 엑셀 파일 직접 연동 및 업데이트 관리자</span>
-                                        <span className="text-xs bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-0.5 rounded-full">엑셀 파서</span>
-                                    </h4>
-                                    <p className="text-xs text-slate-400 mt-1">아르고에서 복사한 원본 재고 파일이나 출고 Excel 파일을 브라우저에 바로 Drag & Drop 하여 실시간 DB를 업데이트합니다.</p>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* Dropzone A: Stock Excel */}
-                                    <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-indigo-50/20 relative group">
-                                        <input 
-                                            type="file" 
-                                            accept=".xlsx, .xls, .csv" 
-                                            onChange={handleStockExcelUpload} 
-                                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" 
-                                        />
-                                        <span className="text-2xl block mb-2">📊</span>
-                                        <h5 className="text-xs font-extrabold text-indigo-950">재고 현황 엑셀 업로드</h5>
-                                        <p className="text-[10px] text-indigo-500 mt-1">날짜별 재고현황 시트를 드래그하거나 선택하세요.</p>
-                                    </div>
-
-                                    {/* Dropzone B: Dispatch Excel */}
-                                    <div className="border-2 border-dashed border-emerald-200 hover:border-emerald-500 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-emerald-50/20 relative group">
-                                        <input 
-                                            type="file" 
-                                            accept=".xlsx, .xls, .csv" 
-                                            onChange={handleDispatchExcelUpload} 
-                                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" 
-                                        />
-                                        <span className="text-2xl block mb-2">🚚</span>
-                                        <h5 className="text-xs font-extrabold text-emerald-950">공장 출고리스트 업로드</h5>
-                                        <p className="text-[10px] text-emerald-500 mt-1">공장 출고 일정 엑셀 시트를 드래그하거나 선택하세요.</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Interactive Manual Database Editor Toggle Box */}
-                            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                                <div 
-                                    onClick={() => setEditorActive(!editorActive)}
-                                    className="p-6 bg-slate-900 text-white flex items-center justify-between cursor-pointer hover:bg-slate-950 transition-all h-full"
-                                >
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xl">⚙️</span>
-                                        <div>
-                                            <h4 className="font-bold text-base">실시간 클라우드 데이터 관리 및 편집기</h4>
-                                            <p className="text-xs text-slate-400 mt-0.5">클라우드 데이터베이스의 기록을 직접 추가하고 수정할 수 있는 수동 관리 모듈입니다.</p>
-                                        </div>
-                                    </div>
-                                    <span className="text-xl font-bold">{editorActive ? "▲ 접기" : "▼ 펼치기"}</span>
-                                </div>
-                            </div>
-
-                        </div>
-
-                        {/* Collapsible database editor panel body */}
-                        {editorActive && (
-                            <div className="p-6 space-y-6 bg-white rounded-3xl border border-slate-100 shadow-sm animate-fade-in">
-                                {/* Action A: Add a new column/date */}
-                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-3">
-                                    <h5 className="text-sm font-extrabold text-slate-800">📅 새 날짜 열(Column) 추가 및 입고 생성</h5>
-                                    <div className="flex flex-col sm:flex-row items-end gap-4">
-                                        <div className="flex-1">
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">추가할 날짜 기입</label>
-                                            <input 
-                                                type="date" 
-                                                value={newColDate}
-                                                onChange={(e) => setNewColDate(e.target.value)}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-mono font-bold"
-                                            />
-                                        </div>
-                                        <button 
-                                            onClick={handleAddColumn}
-                                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-6 py-3.5 rounded-xl shadow-md transition-all cursor-pointer"
-                                        >
-                                            새로운 날짜 추가 및 클라우드 업로드
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Action B: Edit stocks of selected date */}
-                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <h5 className="text-sm font-extrabold text-slate-800">
-                                            ✏️ <span className="text-indigo-600">[{selectedDate}]</span> 일자별 SKU 재고값 강제 수정
-                                        </h5>
-                                        <span className="text-xs text-amber-600 font-bold">⚠️ 수정 후 아래 [동기화]를 눌러야 클라우드에 영구 적용됩니다.</span>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-72 overflow-y-auto p-2 border border-slate-100 rounded-xl bg-white">
-                                        {Object.keys(dbStockData).map(sku => (
-                                            <div key={sku} className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between gap-1.5">
-                                                <span className="text-xs font-bold text-slate-700 truncate block">{sku}</span>
-                                                <div className="flex items-center gap-1">
-                                                    <input 
-                                                        type="number"
-                                                        value={editorStocks[sku] !== undefined ? editorStocks[sku] : ""}
-                                                        onChange={(e) => handleCellChange(sku, e.target.value)}
-                                                        className="w-full border border-slate-200 rounded-lg px-2.5 py-1 text-sm font-extrabold text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                                    />
-                                                    <span className="text-xs text-slate-400 font-bold">개</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="flex items-center justify-end gap-3 pt-2">
-                                        <button 
-                                            onClick={handleCommitEdit}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold px-8 py-3 rounded-xl shadow-lg shadow-emerald-600/10 transition-all cursor-pointer"
-                                        >
-                                            💾 수정된 재고값 클라우드 동기화 (Sync)
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Simulated Logistics Scheduler Log */}
-                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                <div>
-                                    <h4 className="font-bold text-slate-800 text-base flex items-center gap-1.5">
-                                        <span>📦 활성화된 미래 입고 스케줄 일람 (시뮬레이터)</span>
-                                        <span className="text-xs bg-slate-200 text-slate-700 px-3 py-1 rounded-full font-bold">
-                                            {simulations.length}건 대기 중
-                                        </span>
-                                    </h4>
-                                    <p className="text-xs text-slate-400 mt-1">배송 형태 규칙에 따라 기준일 이후 자동으로 재고에 도킹하여 가상 품절일을 보완합니다.</p>
-                                </div>
-                                <div className="text-xs text-slate-500 bg-amber-50 text-amber-800 border border-amber-200/50 px-4 py-2 rounded-xl font-bold">
-                                    💡 <strong>택배:</strong> 기입일 3일 후 자동반영 / <strong>용차:</strong> 기입 당일 즉각반영
-                                </div>
-                            </div>
-
-                            <div className="divide-y divide-slate-100">
-                                {simulations.length > 0 ? (
-                                    simulations.map(sim => {
-                                        const dispDt = parseDateString(sim.dispatchDate);
-                                        const arrivalDt = new Date(dispDt);
-                                        if (sim.type === "택배") {
-                                            arrivalDt.setDate(arrivalDt.getDate() + 3);
-                                        }
-                                        const arrivalStr = arrivalDt.toISOString().split('T')[0];
-
-                                        return (
-                                            <div key={sim.id} className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition-all">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`p-2 rounded-xl px-4 font-bold ${sim.type === "용차" ? "bg-red-50 text-red-600 border border-red-100" : "bg-blue-50 text-blue-600 border border-blue-100"}`}>
-                                                        <span className="text-sm">{sim.type}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-xs text-slate-400 block font-semibold">대상 SKU</span>
-                                                        <h5 className="text-sm md:text-base font-bold text-slate-800">{sim.sku}</h5>
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-10 gap-y-1">
-                                                    <div>
-                                                        <span className="text-xxs text-slate-400 block font-semibold">출고 기입일</span>
-                                                        <span className="text-xs font-mono font-bold text-slate-600">{sim.dispatchDate}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-xxs text-slate-400 block font-semibold">예상 입고 완료일</span>
-                                                        <span className="text-xs font-mono font-extrabold text-slate-800">🚚 {arrivalStr}</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-xxs text-slate-400 block font-semibold">입고 수량</span>
-                                                        <span className="text-sm font-extrabold text-emerald-600">+{sim.amount}개</span>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-xxs text-slate-400 block font-semibold">유형</span>
-                                                        <span className="text-xs font-bold text-slate-500">{sim.type === "택배" ? "2~3일 소요" : "즉시입고"}</span>
-                                                    </div>
-                                                </div>
-
-                                                <button
-                                                    onClick={() => removeSimulation(sim.id)}
-                                                    className="text-xs font-extrabold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl transition-all cursor-pointer"
-                                                >
-                                                    일정 취소
-                                                </button>
-                                            </div>
-                                        );
-                                    })
-                                ) : (
-                                    <div className="py-12 text-center text-slate-400 font-medium">
-                                        등록된 입고 시뮬레이션 일정이 없습니다. 우측 폼에서 시뮬레이션을 등록해보세요!
-                                    </div>
                                 )}
                             </div>
+
+                            {/* Summary metrics row */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">🚨 7일내 긴급 대응</span>
+                                    <div className="flex items-baseline gap-2 mt-2">
+                                        <span className="text-4xl font-extrabold text-red-600">{summaryMetrics.criticalCount}</span>
+                                        <span className="text-sm font-medium text-slate-500">개 SKU</span>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">⚠️ 30일내 보충 경고</span>
+                                    <div className="flex items-baseline gap-2 mt-2">
+                                        <span className="text-4xl font-extrabold text-amber-500">{summaryMetrics.warningCount}</span>
+                                        <span className="text-sm font-medium text-slate-500">개 SKU</span>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">📦 보관 총 재고수량</span>
+                                    <div className="flex items-baseline gap-2 mt-2">
+                                        <span className="text-4xl font-extrabold text-indigo-600">{summaryMetrics.totalStock.toLocaleString()}</span>
+                                        <span className="text-sm font-medium text-slate-500">개</span>
+                                    </div>
+                                </div>
+                                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">🚚 총 일평균 판매량(ADS)</span>
+                                    <div className="flex items-baseline gap-2 mt-2">
+                                        <span className="text-4xl font-extrabold text-teal-600">{summaryMetrics.totalDailySales}</span>
+                                        <span className="text-sm font-medium text-slate-500">개 / 일</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Inventory Table Container */}
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                                <div className="lg:col-span-9 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                                    <div className="p-6 border-b border-slate-100 bg-slate-50/50 space-y-4">
+                                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                            <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                                <span>📋 실시간 입출고/품절 예측 상황판</span>
+                                                <span className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-bold">{filteredSkuList.length}개 표시</span>
+                                            </h2>
+                                            <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0">
+                                                {["ALL", "클레이", "플레이돌", "와우펜", "키즈탭", "기타"].map(cat => (
+                                                    <button key={cat} onClick={() => setCategoryFilter(cat)} className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all ${categoryFilter === cat ? "bg-indigo-600 text-white" : "bg-slate-200/60 text-slate-600 hover:bg-slate-200"}`}>
+                                                        {cat === "ALL" ? "전체" : cat}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                                            <div className="md:col-span-6 relative">
+                                                <input type="text" placeholder="품목명 검색..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                                                <span className="absolute left-3.5 top-3 text-slate-400">🔍</span>
+                                            </div>
+                                            <div className="md:col-span-6 flex flex-wrap items-center justify-end gap-x-6 gap-y-1">
+                                                <label className="flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer select-none">
+                                                    <input type="checkbox" checked={onlyCritical30} onChange={(e) => setOnlyCritical30(e.target.checked)} className="rounded border-slate-300 text-indigo-600 w-4 h-4 cursor-pointer" />
+                                                    <span>⏳ 30일 이내 품절</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 text-sm font-bold text-slate-600 cursor-pointer select-none">
+                                                    <input type="checkbox" checked={excludeZeroStock} onChange={(e) => setExcludeZeroStock(e.target.checked)} className="rounded border-slate-300 text-indigo-600 w-4 h-4 cursor-pointer" />
+                                                    <span>🚫 재고 0개 제외</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 text-xs font-extrabold uppercase tracking-wider">
+                                                    <th className="py-4 px-6">분류</th>
+                                                    <th className="py-4 px-6">SKU</th>
+                                                    <th className="py-4 px-6 text-center">현재고 ({selectedDate.slice(5)})</th>
+                                                    <th className="py-4 px-6 text-center">ADS</th>
+                                                    <th className="py-4 px-6">예상 품절일</th>
+                                                    <th className="py-4 px-6">잔여기간</th>
+                                                    <th className="py-4 px-6 text-right">보충 필요(30일분)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 text-sm">
+                                                {filteredSkuList.map(item => {
+                                                    const isSelected = selectedSku === item.sku;
+                                                    const isCritical = item.daysRemaining <= 10;
+                                                    const isWarning = item.daysRemaining > 10 && item.daysRemaining <= 30;
+                                                    return (
+                                                        <tr key={item.sku} onClick={() => setSelectedSku(item.sku)} className={`hover:bg-indigo-50/40 cursor-pointer transition-all border-l-4 ${isSelected ? "bg-indigo-50/80 border-l-indigo-600" : "border-l-transparent"}`}>
+                                                            <td className="py-5 px-6 font-bold text-slate-400">{item.category}</td>
+                                                            <td className="py-5 px-6 font-bold text-slate-900">{item.sku}</td>
+                                                            <td className="py-5 px-6 text-center font-extrabold text-slate-900 text-base">
+                                                                {item.currentStock}
+                                                                {item.simulatedArrivals > 0 && <span className="block text-xs text-emerald-600 font-extrabold mt-1">(+{item.simulatedArrivals} 예정)</span>}
+                                                            </td>
+                                                            <td className="py-5 px-6 text-center text-slate-700 font-mono font-semibold">{item.ads.toFixed(2)}</td>
+                                                            <td className="py-5 px-6">
+                                                                <span className={`font-mono text-sm px-3 py-1.5 rounded-lg font-bold w-max ${isCritical ? "bg-red-100 text-red-800" : isWarning ? "bg-amber-100 text-amber-800" : "text-slate-600"}`}>
+                                                                    📅 {item.expectedStockoutDate}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-5 px-6">
+                                                                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-extrabold ${isCritical ? "bg-red-200 text-red-900" : isWarning ? "bg-amber-200 text-amber-900" : "bg-emerald-200 text-emerald-900"}`}>
+                                                                    {item.displayRemainingText}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-5 px-6 text-right font-extrabold text-indigo-700 text-base">
+                                                                {item.replenishment30.toLocaleString()}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Right Detail Panel */}
+                                <div className="lg:col-span-3 space-y-6">
+                                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-5">
+                                        <div className="flex justify-between items-center"><span className="text-xs font-bold text-indigo-600 tracking-widest">📈 디테일 분석</span></div>
+                                        <h3 className="text-xl font-bold text-slate-900 leading-tight">{selectedSku}</h3>
+                                        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                            <span className="text-xs font-semibold text-slate-500 block mb-3">과거 재고 수준 추이 ({selectedDate.slice(5)} 기준)</span>
+                                            <div className="h-36 w-full flex items-end justify-between gap-1 pt-4">
+                                                {skuHistoryPoints.map((pt, idx) => {
+                                                    const maxStock = Math.max(...skuHistoryPoints.map(p => p.stock), 50);
+                                                    const barHeight = `${(pt.stock / maxStock) * 100}%`;
+                                                    return (
+                                                        <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative">
+                                                            <div style={{ height: barHeight }} className={`w-full rounded-t-sm transition-all duration-300 ${idx === skuHistoryPoints.length - 1 ? "bg-indigo-600" : "bg-slate-300"}`}></div>
+                                                            <span className="text-[9px] text-slate-400 mt-1 font-mono">{pt.date.slice(5)}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* SIMULATION */}
+                                    <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                                        <h4 className="font-bold text-slate-800 text-sm">🚚 입고 시뮬레이션</h4>
+                                        <form onSubmit={addSimulation} className="space-y-4">
+                                            <select value={simSku} onChange={(e) => setSimSku(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
+                                                {Object.keys(dbStockData).filter(k => k !== "사운드차트 3종 패키지").map(sku => <option key={sku} value={sku}>{sku}</option>)}
+                                            </select>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <input type="date" value={simDispatchDate} onChange={(e) => setSimDispatchDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold" />
+                                                <select value={simType} onChange={(e) => setSimType(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold">
+                                                    <option value="택배">택배</option>
+                                                    <option value="용차">용차</option>
+                                                </select>
+                                            </div>
+                                            <input type="number" value={simAmount} onChange={(e) => setSimAmount(e.target.value)} placeholder="수량 입력" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold" />
+                                            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-xl text-sm transition-all">시뮬레이션 가동</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </main>
+                    )}
+
+                    {/* Unified Drag and Drop Excel Upload Center (Visible on both views) */}
+                    <div className="max-w-full mx-auto px-6 md:px-10 pb-10">
+                        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
+                            <div>
+                                <h4 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
+                                    <span>📊 통합 엑셀 파일 직접 연동 관리자</span>
+                                    <span className="text-xs bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-0.5 rounded-full">3-in-1 파서</span>
+                                </h4>
+                                <p className="text-xs text-slate-400 mt-1">로켓배송과 아르고 재고, 발송이 모두 들어있는 엑셀 파일 하나만 마우스로 끌어다 놓으시면 전체 화면이 한 번에 업데이트됩니다.</p>
+                            </div>
+
+                            <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 rounded-2xl p-10 text-center cursor-pointer transition-colors bg-indigo-50/20 relative group">
+                                <input type="file" accept=".xlsx, .xls, .csv" onChange={handleUnifiedExcelUpload} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" />
+                                <span className="text-4xl block mb-4">📂</span>
+                                <h5 className="text-sm font-extrabold text-indigo-950">여기에 엑셀 파일을 드래그 앤 드롭 하세요</h5>
+                                <p className="text-xs text-indigo-500 mt-1">로켓배송 / N배송 / 아르고발송 시트를 자동 인식하여 한 번에 합산합니다.</p>
+                            </div>
                         </div>
+                    </div>
 
-                    </main>
-
-                    {/* Footer */}
                     <footer className="bg-slate-900 text-slate-500 text-xs py-6 border-t border-slate-800">
                         <div className="max-w-full mx-auto px-10 text-center space-y-2">
-                            <p>© 2026 요미몬(주) 물류팀. All Rights Reserved.</p>
+                            <p>© 2026 요미몬(주) 통합 재고 관리 시스템. All Rights Reserved.</p>
                         </div>
                     </footer>
-
                 </div>
             );
         }
