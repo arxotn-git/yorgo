@@ -1,10 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <!-- 모바일 화면 확대(핀치 줌) 100% 허용 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>N배송 & 로켓배송 통합 재고현황 (v16)</title>
+    <title>N배송(아르고) 재고현황 (v20)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -42,23 +41,19 @@
         .freeze-wrap::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 8px; }
         .freeze-wrap::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 2px solid #e2e8f0; }
         .freeze-wrap::-webkit-scrollbar-thumb:hover { background: #64748b; }
-        .freeze-wrap::-webkit-scrollbar-corner { background: #e2e8f0; }
         
-        /* 🚀 핵심: 상품명, 구성, SKU 초밀착을 위한 칼같은 너비 설정 */
+        /* 로켓 테이블 고정 열 너비 */
         :root {
-            --col-name: 130px;
-            --col-opt:  90px;
-            --col-sku:  90px;
-            --col-l1: 130px;              /* 상품명 끝 */
-            --col-l2: 220px;              /* 상품명+구성 끝 */
+            --col-name: 150px;
+            --col-opt:  120px;
+            --col-sku:  110px;
+            --col-l1: 150px;              /* 상품명 끝 */
+            --col-l2: 270px;              /* 상품명+구성 끝 */
         }
 
         .freeze-col-1 { position: sticky; left: 0; z-index: 40; box-shadow: 1px 0 0 #e2e8f0; }
         .freeze-col-2 { position: sticky; left: var(--col-l1); z-index: 40; box-shadow: 1px 0 0 #e2e8f0; }
         .freeze-col-3 { position: sticky; left: var(--col-l2); z-index: 40; border-right: 2px solid #cbd5e1; }
-
-        .argo-col-1 { position: sticky; left: 0; z-index: 40; box-shadow: 1px 0 0 #e2e8f0; }
-        .argo-col-2 { position: sticky; left: 100px; z-index: 40; border-right: 1px solid #cbd5e1; }
 
         .freeze-header th {
             position: sticky;
@@ -68,20 +63,18 @@
         }
         .freeze-header th.freeze-col-1,
         .freeze-header th.freeze-col-2,
-        .freeze-header th.freeze-col-3,
-        .freeze-header th.argo-col-1,
-        .freeze-header th.argo-col-2 {
+        .freeze-header th.freeze-col-3 {
             z-index: 50 !important; 
         }
 
-        /* 📱 모바일 환경(768px 이하): 불필요한 틀고정 강제 해제 */
+        /* 모바일 환경(768px 이하): 불필요한 틀고정 강제 해제 */
         @media (max-width: 768px) {
-            .freeze-col-2, .freeze-col-3, .argo-col-2 {
+            .freeze-col-2, .freeze-col-3 {
                 position: static !important;
                 box-shadow: none !important;
                 border-right: none !important;
             }
-            .freeze-col-3, .argo-col-2 {
+            .freeze-col-3 {
                 border-right: 1px solid #e2e8f0 !important; 
             }
         }
@@ -89,10 +82,11 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 <div id="root"></div>
+
 <script type="text/babel">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0319";
-const LS_KEY = "argo_v16";
+const LS_KEY = "argo_dashboard_master_v20";
 
 // 🔥 구글 파이어베이스 직통 연결 키
 const firebaseConfig = {
@@ -114,19 +108,61 @@ try {
     console.error("Firebase Init Error:", e);
 }
 
-const cleanDate = (s) => { if (!s) return new Date(); return new Date(String(s).split(/[\s(]/)[0].trim()); };
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// 유틸리티 & 데이터
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const cleanDateForParse = (s) => { 
+    if (!s) return new Date(); 
+    return new Date(String(s).split(/[\s(]/)[0].trim()); 
+};
 const cleanSku  = (s) => String(s||"").replace(/^요미몬\s+/,"").trim();
 
-const CATS = {
-    "플레이돌":"플레이돌","플레이돌 맥스":"플레이돌","키즈탭 프로":"키즈탭",
-    "키즈탭 프로 디즈니 확장패키지":"키즈탭","안심클레이 10종팩":"클레이","안심클레이 15종팩":"클레이",
-    "클레이 도구박스(트레이포함)":"클레이","사운드차트 3종 패키지":"기타","와우펜(3개입)":"와우펜",
-    "와우펜북-한글":"와우펜","와우펜북-숫자":"와우펜","와우펜북-미술":"와우펜",
-    "멀티보드":"기타","똑똑한 낱말카드":"기타","키즈 무선마이크":"기타","제로비누":"기타",
-    "저자극 샤워타월":"기타","와우펜(1개)":"와우펜","쇼핑백(중)":"기타","유니버스 VIP 멤버십 1년 이용권":"기타"
+const INIT_DATES = [
+    "2026-05-11","2026-05-12","2026-05-13","2026-05-14","2026-05-15",
+    "2026-05-18","2026-05-19","2026-05-20","2026-05-21","2026-05-22",
+    "2026-05-26","2026-05-27","2026-05-28","2026-05-29","2026-05-29 (2)",
+    "2026-06-01","2026-06-02","2026-06-02 (2)", "2026-06-04", "2026-06-05", "2026-06-08"
+];
+
+// 엑셀 원본과 동일한 완벽한 순서를 보장하는 마스터 배열
+const INIT_STOCK = {
+    "플레이돌":[99,95,95,93,92,88,88,88,86,86,82,81,79,79,79,79,78,78,71,69,64],
+    "플레이돌 맥스":[63,62,58,55,53,46,43,42,36,35,28,26,24,20,20,76,72,72,68,66,61],
+    "키즈탭 프로":[54,52,51,51,51,50,50,49,48,48,44,43,43,41,41,40,40,40,37,36,36],
+    "키즈탭 프로 디즈니 확장패키지":[52,50,48,47,47,45,45,45,43,41,40,40,39,39,39,38,36,36,31,30,28],
+    "안심클레이 10종팩":[116,107,100,210,202,185,177,163,138,129,106,95,78,75,74,348,336,332,305,292,270],
+    "안심클레이 15종팩":[102,100,191,182,179,167,160,152,146,137,119,114,108,108,107,94,92,91,82,79,68],
+    "클레이 도구박스(트레이포함)":[34,31,87,83,80,66,66,62,48,40,82,77,67,67,64,108,102,102,93,83,74],
+    "사운드차트 3종 패키지":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    "와우펜(3개입)":[276,272,270,270,268,257,256,250,249,245,233,228,223,190,186,162,156,154,141,133,110],
+    "와우펜북-한글":[35,34,34,34,34,32,32,32,32,32,30,30,30,29,29,28,28,28,28,26,25],
+    "와우펜북-숫자":[41,41,41,41,41,40,40,40,40,39,38,38,38,38,38,36,35,35,35,35,34],
+    "와우펜북-미술":[70,70,69,68,68,66,66,66,66,63,60,59,59,54,54,46,45,45,43,40,39],
+    "멀티보드":[210,199,193,189,184,173,171,164,159,156,144,137,134,132,132,127,124,123,114,108,94],
+    "똑똑한 낱말카드":[170,167,163,165,159,151,149,147,145,143,139,138,133,130,130,124,122,122,117,116,111],
+    "키즈 무선마이크":[252,248,241,239,237,230,229,225,222,221,215,213,210,210,210,204,199,199,195,189,184],
+    "제로비누":[616,602,588,574,569,548,540,534,503,499,466,461,447,437,437,412,402,402,371,363,342],
+    "저자극 샤워타월":[182,171,163,153,148,140,136,131,129,123,103,94,79,71,71,577,574,574,568,563,544],
+    "와우펜(1개)":[65,51,43,435,424,401,397,385,376,364,345,326,324,318,318,308,305,305,305,300,297],
+    "쇼핑백(중)":[571,562,555,549,544,530,527,525,514,509,493,489,484,476,476,470,463,463,446,436,423],
+    "유니버스 VIP 멤버십 1년 이용권":[139,135,135,134,132,128,128,128,126,126,122,121,119,119,119,119,118,118,113,107,102]
 };
 
-// 🚀 역방향 연도 추적 파서 (D열 23년 완벽 대응)
+const SKU_ORDER = Object.keys(INIT_STOCK);
+
+const INIT_INC = [
+    {sku:"안심클레이 10종팩",date:"2026-05-14",amount:120,type:"택배",isRegistered:true},
+    {sku:"안심클레이 15종팩",date:"2026-05-13",amount:100,type:"용차",isRegistered:true},
+    {sku:"클레이 도구박스(트레이포함)",date:"2026-05-13",amount:60,type:"택배",isRegistered:true},
+    {sku:"와우펜(1개)",date:"2026-05-14",amount:400,type:"택배",isRegistered:true},
+    {sku:"클레이 도구박스(트레이포함)",date:"2026-05-26",amount:50,type:"택배",isRegistered:true},
+    {sku:"플레이돌 맥스",date:"2026-05-29",amount:60,type:"용차",isRegistered:true},
+    {sku:"클레이 도구박스(트레이포함)",date:"2026-05-29",amount:60,type:"용차",isRegistered:true},
+    {sku:"안심클레이 10종팩",date:"2026-05-29",amount:288,type:"용차",isRegistered:true},
+    {sku:"저자극 샤워타월",date:"2026-05-29",amount:528,type:"용차",isRegistered:true}
+];
+
+// 🚀 역방향 연도 추적 파서
 const parseCellToParts = cell => {
     if (cell == null || cell === "") return null;
     if (cell instanceof Date) {
@@ -169,7 +205,6 @@ const parseSheetWithTimeline = (sheet, skipCols=0) => {
     if (!sheet) return null;
     let rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:true, defval:""});
     let hri = findHeaderRow(rows, skipCols);
-    
     if (hri===0 && rows.length>0 && !rows[0].some((c,i)=>i>=skipCols&&parseCellToParts(c))) {
         rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:false, defval:""});
         hri = findHeaderRow(rows, skipCols);
@@ -177,10 +212,19 @@ const parseSheetWithTimeline = (sheet, skipCols=0) => {
     const hRow = rows[hri]||[];
     const dCols = [];
     
-    let currentYear = 2026; 
+    let anchorYear = new Date().getFullYear();
+    for (let i = hRow.length - 1; i >= skipCols; i--) {
+        const p = parseCellToParts(hRow[i]);
+        if (p && p.y) {
+            anchorYear = p.y;
+            break;
+        }
+    }
+    
+    let currentYear = anchorYear;
     let lastMonth = null;
 
-    for (let i=hRow.length-1; i>=skipCols; i--) {
+    for (let i = hRow.length - 1; i >= skipCols; i--) {
         const p = parseCellToParts(hRow[i]);
         if (!p) continue;
         if (p.y) {
@@ -199,30 +243,33 @@ const parseSheetWithTimeline = (sheet, skipCols=0) => {
     return { rows, hri, dCols, parsedDates: dCols.map(c=>c.label) };
 };
 
-function Dropdown({label,value,options,onChange}) {
-    const [open,setOpen]=useState(false);
-    const ref=useRef(null);
-    const sel=useMemo(()=>options.find(o=>String(o.value)===String(value))||options[0],[options,value]);
-    useEffect(()=>{
-        const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
-        document.addEventListener("mousedown",h);
-        return()=>document.removeEventListener("mousedown",h);
-    },[]);
-    if(!options.length)return null;
-    return(
-        <div ref={ref} className="relative flex items-center bg-slate-800 rounded-xl px-3 py-1.5 border border-slate-700 z-50">
-            {label&&<span className="text-sm text-slate-400 mr-2 font-medium select-none">{label}:</span>}
+// --- CUSTOM DROPDOWN COMPONENT ---
+function Dropdown({ label, value, options, onChange }) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef(null);
+    const sel = useMemo(() => options.find(o => String(o.value) === String(value)) || options[0], [options, value]);
+    
+    useEffect(() => {
+        const h = e => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        document.addEventListener("mousedown", h);
+        return () => document.removeEventListener("mousedown", h);
+    }, []);
+    
+    if (!options.length) return null;
+    return (
+        <div ref={ref} className="relative flex items-center bg-slate-800 rounded-xl px-3 py-1.5 border border-slate-700 z-50 shadow-inner">
+            {label && <span className="text-sm text-slate-400 mr-2 font-medium select-none">{label}:</span>}
             <div className="relative">
-                <button type="button" onClick={()=>setOpen(!open)} className="bg-slate-900 text-indigo-300 font-extrabold rounded-lg px-3 py-2 border border-slate-700 flex items-center gap-2 hover:border-indigo-500 transition-all min-w-[90px]">
-                    <span>{sel?.label||""}</span>
+                <button type="button" onClick={() => setOpen(!open)} className="bg-slate-900 text-indigo-300 font-extrabold rounded-lg px-3 py-2 border border-slate-700 flex items-center gap-2 hover:border-indigo-500 transition-all min-w-[90px]">
+                    <span>{sel?.label || ""}</span>
                     <svg className={`w-4 h-4 flex-shrink-0 transition-transform ${open?"rotate-180":""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"/></svg>
                 </button>
-                {open&&(
+                {open && (
                     <div className="absolute right-0 mt-2 w-52 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1 z-[999] max-h-64 overflow-y-auto">
-                        {options.map(opt=>(
-                            <button key={String(opt.value)} type="button" onClick={()=>{onChange(opt.value);setOpen(false);}}
-                                className={`w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center justify-between border-b border-slate-800/40 last:border-0 ${String(opt.value)===String(value)?"bg-indigo-600/30 text-indigo-300 border-l-4 border-indigo-500":"text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
-                                <span>{opt.label}</span>{String(opt.value)===String(value)&&<span>✓</span>}
+                        {options.map(opt => (
+                            <button key={String(opt.value)} type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
+                                className={`w-full text-left px-4 py-2.5 text-sm font-semibold flex items-center justify-between border-b border-slate-800/40 last:border-0 ${String(opt.value) === String(value) ? "bg-indigo-600/30 text-indigo-300 border-l-4 border-indigo-500" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`}>
+                                <span>{opt.label}</span>{String(opt.value) === String(value) && <span>✓</span>}
                             </button>
                         ))}
                     </div>
@@ -232,12 +279,17 @@ function Dropdown({label,value,options,onChange}) {
     );
 }
 
+// --- MAIN APP COMPONENT ---
 function App() {
     const [dbSync, setDbSync] = useState("🔄 연결 중...");
-    const [loggedIn, setLoggedIn]=useState(()=>sessionStorage.getItem("ili")==="1");
+    const [loggedIn, setLoggedIn] = useState(() => {
+        try { return sessionStorage.getItem("ili") === "1"; } 
+        catch(e) { return false; }
+    });
+    
     const [pwd,setPwd]=useState(""); 
     const [pwdErr,setPwdErr]=useState(false);
-    const [view,setView]=useState("rocket"); // 기본 화면 로켓배송
+    const [view,setView]=useState("argo"); // 'argo', 'argo_raw', 'rocket'
     const [notif,setNotif]=useState(null);
 
     const [dbDates,setDbDates]=useState([]);
@@ -246,21 +298,25 @@ function App() {
     const [rDates,setRDates]=useState([]);
     const [rItems,setRItems]=useState([]);
 
+    const notify=(msg,type="ok")=>{setNotif({msg,type});setTimeout(()=>setNotif(null),4500);};
+
     useEffect(() => {
         if (!useFirebase) return;
-        setDbSync("🔄 연결 중...");
+        setDbSync("🔄 클라우드 연결 중...");
+        
         const docRef = db.doc(`yomimon_dashboard/inventory_master`);
         const unsubscribe = docRef.onSnapshot((docSnap) => {
             if (docSnap.exists) {
                 const d = docSnap.data();
-                if (d.DATES && d.DATES.length > 0) setDbDates(d.DATES);
+                if (d.DATES?.length) setDbDates(d.DATES);
                 if (d.STOCK) setDbStock(d.STOCK);
                 if (d.INC) setDbInc(d.INC);
                 if (d.RD) setRDates(d.RD);
                 if (d.RI) setRItems(d.RI);
                 setDbSync("☁️ 실시간 연동 완료");
+                try{ localStorage.setItem(LS_KEY, JSON.stringify(d)); }catch(e){}
             } else {
-                setDbSync("🗂️ DB 비어있음");
+                setDbSync("🗂️ DB가 비어있습니다. 엑셀을 업로드해주세요.");
             }
         }, (error) => {
             console.error("Firestore 에러:", error);
@@ -269,45 +325,26 @@ function App() {
         return () => unsubscribe();
     }, []);
 
-    const save = async (dates, stock, inc, rd, ri) => {
-        try { localStorage.setItem(LS_KEY, JSON.stringify({DATES:dates,STOCK:stock,INC:inc,RD:rd,RI:ri})); } catch(e) {}
-        if (useFirebase) {
-            setDbSync("⏳ 저장 중...");
-            try {
-                await db.doc(`yomimon_dashboard/inventory_master`).set({
-                    DATES: dates, STOCK: stock, INC: inc, RD: rd, RI: ri, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                setDbSync("☁️ 실시간 연동 완료");
-                notify("🎉 엑셀 데이터가 클라우드에 성공적으로 저장되었습니다!");
-            } catch (e) {
-                setDbSync("❌ 저장 실패");
-                notify("클라우드 저장에 실패했습니다.", "err");
-            }
-        } else {
-            notify("로컬 환경에 임시 저장되었습니다.");
-        }
-    };
-    
-    const notify=(msg,type="ok")=>{setNotif({msg,type});setTimeout(()=>setNotif(null),4500);};
-
-    // N배송 필터
+    // ── N배송 상황판 필터 (탭 1) ──
     const aYears=useMemo(()=>dbDates.length?[...new Set(dbDates.map(d=>d.slice(0,4)))].sort().reverse():["2026"],[dbDates]);
     const [aY,setAY]=useState(()=>aYears[0]||"2026");
     const aMons=useMemo(()=>dbDates.length?[...new Set(dbDates.filter(d=>d.startsWith(aY)).map(d=>d.slice(5,7)))].sort().reverse():["06"],[dbDates,aY]);
     const [aM,setAM]=useState(()=>aMons[0]||"06");
     const aDatesM=useMemo(()=>[...dbDates.filter(d=>d.startsWith(`${aY}-${aM}`))].reverse(),[dbDates,aY,aM]);
     const [aD,setAD]=useState("");
+    
     useEffect(()=>{if(!aYears.includes(aY))setAY(aYears[0]);},[aYears]);
     useEffect(()=>{if(!aMons.includes(aM))setAM(aMons[0]);},[aY,aMons]);
     useEffect(()=>{if(aDatesM.length&&!aDatesM.includes(aD))setAD(aDatesM[0]);},[aDatesM]);
 
-    // 로켓 필터
+    // ── 로켓 필터 (탭 2) ──
     const [rMode,setRMode]=useState("15");
     const [rShowZero,setRShowZero]=useState(false); 
     const rYears=useMemo(()=>rDates.length?[...new Set(rDates.map(d=>d.slice(0,4)))].sort().reverse():["2026"],[rDates]);
     const [rY,setRY]=useState(()=>rYears[0]||"2026");
     const rMons=useMemo(()=>rDates.length?[...new Set(rDates.filter(d=>d.startsWith(rY)).map(d=>d.slice(5,7)))].sort().reverse():["06"],[rDates,rY]);
     const [rM,setRM]=useState(()=>rMons[0]||"06");
+    
     useEffect(()=>{if(!rYears.includes(rY))setRY(rYears[0]);},[rYears]);
     useEffect(()=>{if(!rMons.includes(rM))setRM(rMons[0]);},[rY,rMons]);
 
@@ -326,81 +363,168 @@ function App() {
         return rDates.filter(d=>d.startsWith(`${rY}-${rM}`));
     },[rDates,rMode,rY,rM,nowYM,lastYM]);
 
-    // 🚀 핵심수정: 필터 기준을 과거 30일이 아닌 '현재 보고 있는 탭 날짜들(visRD)'로 변경
     const filtRI=useMemo(()=>{
         return rItems.filter(item=>{
             if(!rShowZero){
-                // 현재 보이는 화면의 날짜들 중 재고가 1개라도 있는지 확인
-                const hasStock = visRD.some(d=>{
+                const hasStock=visRD.some(d=>{
                     const v=item.history[d];
                     return v!=null&&v!==""&&v!=="-"&&Number(v)>0;
                 });
-                if(!hasStock) return false;
+                if(!hasStock)return false;
             }
             return true;
         });
     },[rItems,visRD,rShowZero]);
 
-    // N배송 ADS
+    // ── N배송 원본(Raw) 필터 (탭 3) ──
+    const [aRawMode, setARawMode] = useState("15");
+    const [aRawShowZero, setARawShowZero] = useState(false);
+    const [aRawY, setARawY] = useState(() => aYears[0] || "2026");
+    const aRawMons = useMemo(() => dbDates.length ? [...new Set(dbDates.filter(d=>d.startsWith(aRawY)).map(d=>d.slice(5,7)))].sort().reverse() : ["06"], [dbDates, aRawY]);
+    const [aRawM, setARawM] = useState(() => aRawMons[0] || "06");
+    
+    useEffect(() => { if(!aYears.includes(aRawY)) setARawY(aYears[0]||"2026"); }, [aYears]);
+    useEffect(() => { if(!aRawMons.includes(aRawM)) setARawM(aRawMons[0]||"06"); }, [aRawY, aRawMons]);
+
+    const visAD = useMemo(() => {
+        if(!dbDates.length) return [];
+        if(aRawMode === "TODAY") return dbDates.slice(-1);
+        if(aRawMode === "5") return dbDates.slice(-5);
+        if(aRawMode === "10") return dbDates.slice(-10);
+        if(aRawMode === "15") return dbDates.slice(-15);
+        if(aRawMode === "30") return dbDates.slice(-30);
+        if(aRawMode === "THIS") return dbDates.filter(d=>d.startsWith(nowYM));
+        if(aRawMode === "LAST") return dbDates.filter(d=>d.startsWith(lastYM));
+        return dbDates.filter(d=>d.startsWith(`${aRawY}-${aRawM}`));
+    }, [dbDates, aRawMode, aRawY, aRawM, nowYM, lastYM]);
+
+    const filtARaw = useMemo(() => {
+        return Object.keys(dbStock).filter(sku => {
+            if (!sku) return false;
+            if (!aRawShowZero) {
+                const hasStock = visAD.some(d => {
+                    const idx = dbDates.indexOf(d);
+                    const v = dbStock[sku][idx];
+                    return v != null && v > 0;
+                });
+                if (!hasStock) return false;
+            }
+            return true;
+        }).map(sku => ({
+            sku,
+            history: dbStock[sku]
+        })).sort((a, b) => {
+            // 엑셀 원본(INITIAL_STOCK) 순서대로 완벽하게 정렬
+            const idxA = SKU_ORDER.indexOf(a.sku);
+            const idxB = SKU_ORDER.indexOf(b.sku);
+            const finalIdxA = idxA === -1 ? 999 : idxA;
+            const finalIdxB = idxB === -1 ? 999 : idxB;
+            return finalIdxA - finalIdxB;
+        });
+    }, [dbStock, dbDates, visAD, aRawShowZero]);
+
+    // ── N배송 ADS 계산 (탭 1) ──
     const [adsW,setAdsW]=useState(4);
     const [only30,setOnly30]=useState(true);
     const [exZero,setExZero]=useState(true);
     const [srch,setSrch]=useState("");
-    const [catF,setCatF]=useState("ALL");
     const [selSku,setSelSku]=useState("");
 
-    const aDI=useMemo(()=>{const i=dbDates.indexOf(aD);return i!==-1?i:Math.max(0,dbDates.length-1);},[aD,dbDates]);
+    const toDateKey = (value) => {
+        if(!value) return "";
+        const dt = cleanDateForParse(value);
+        if(!isNaN(dt.getTime())) return dt.toISOString().split('T')[0];
+        const m = String(value).match(/\d{4}-\d{2}-\d{2}/);
+        return m ? m[0] : String(value).split(" ")[0];
+    };
+    const calendarDaysBetween = (startDt, endDt) => {
+        if(isNaN(startDt.getTime()) || isNaN(endDt.getTime()) || endDt <= startDt) return 0;
+        return Math.max(1, Math.ceil((endDt-startDt)/86400000));
+    };
+    const closeIndexForDate = (dates, dateKey, maxIndex=dates.length-1) => {
+        for(let i=Math.min(maxIndex, dates.length-1); i>=0; i--) {
+            if(toDateKey(dates[i]) === dateKey) return i;
+        }
+        return -1;
+    };
+    const findAdsWindow = (dates, targetIndex, targetCount) => {
+        const endKey = toDateKey(dates[targetIndex]);
+        const endIndex = closeIndexForDate(dates, endKey, targetIndex);
+        const endDt = cleanDateForParse(endKey);
+        let startIndex = 0;
+        let days = 1;
+        let picked = 1;
+        const seen = new Set([endKey]);
+        for(let i=endIndex-1; i>=0; i--) {
+            const key = toDateKey(dates[i]);
+            if(!key || seen.has(key)) continue;
+            seen.add(key);
+            const candidateIndex = closeIndexForDate(dates, key, endIndex-1);
+            const candidateDt = cleanDateForParse(key);
+            picked++;
+            startIndex = candidateIndex;
+            days = calendarDaysBetween(candidateDt, endDt);
+            if(picked >= targetCount) {
+                break;
+            }
+        }
+        return { startIndex, endIndex, startDate: toDateKey(dates[startIndex]), endDate: endKey, days: Math.max(1, days), count: picked };
+    };
+
+    const aDI=useMemo(()=>{const i=dbDates.lastIndexOf(aD);return i!==-1?i:Math.max(0,dbDates.length-1);},[aD,dbDates]);
 
     const calcSku=(sku,ti)=>{
-        const cur=dbStock[sku]?.[ti]||0;
-        const si=Math.max(0,ti-adsW);
-        const ss=dbStock[sku]?.[si]||0;
-        const sDt=cleanDate(dbDates[si]); const tDt=cleanDate(dbDates[ti]);
-        const days=Math.max(1,Math.ceil(Math.abs(tDt-sDt)/86400000));
+        const win = findAdsWindow(dbDates, ti, adsW);
+        const cur=dbStock[sku]?.[win.endIndex]||0;
+        const ss=dbStock[sku]?.[win.startIndex]||0;
+        const sDt=cleanDateForParse(win.startDate);
+        const tDt=cleanDateForParse(win.endDate);
+        const days=win.days;
         const delta=ss-cur;
-        let wi=0,pa=0;
+        let wi=0, pa=0;
         dbInc.forEach(inc=>{
             if(inc.sku!==sku)return;
-            const dt=cleanDate(inc.date);
-            if(isNaN(dt.getTime()))return;
+            const dt=cleanDateForParse(inc.date);
+            if(isNaN(dt.getTime())) return;
             let present=false;
             if(inc.isRegistered){
                 present=true;
                 if(dt>sDt&&dt<=tDt&&cur<inc.amount*0.8&&delta>=0)present=false;
             }
-            if(present){if(dt>sDt&&dt<=tDt)wi+=inc.amount;}else pa+=inc.amount;
+            if(present){ if(dt>sDt&&dt<=tDt)wi+=inc.amount; }
+            else pa+=inc.amount;
         });
-        const sales=delta+wi;
-        const ads=Math.max(0,parseFloat((sales/days).toFixed(2)));
-        let dr=Infinity,esd="안전 (우려없음)",drt="99일 이상";
+        const ads=Math.max(0,parseFloat(((delta+wi)/days).toFixed(2)));
+        let dr=Infinity, esd="안전 (우려없음)", drt="99일 이상";
         if(ads>0){
             const tot=cur+pa; dr=tot/ads;
             if(dr<365){
                 const sd=new Date(tDt);sd.setDate(sd.getDate()+Math.floor(dr));
-                esd=sd.toISOString().split('T')[0];drt=`${Math.ceil(dr)}일 남음`;
+                esd=isNaN(sd.getTime())?"계산불가":sd.toISOString().split('T')[0];
+                drt=`${Math.ceil(dr)}일 남음`;
             }
         }
-        return{sku,category:CATS[sku]||"기타",currentStock:cur,ads,daysRemaining:dr,displayRemainingText:drt,expectedStockoutDate:esd,replenishment30:ads>0?Math.ceil(ads*30):0,simulatedArrivals:pa};
+        return {sku,currentStock:cur,ads,adsDays:days,adsCount:win.count,adsStartDate:win.startDate,adsEndDate:win.endDate,daysRemaining:dr,displayRemainingText:drt,expectedStockoutDate:esd,replenishment30:ads>0?Math.ceil(ads*30):0,simulatedArrivals:pa};
     };
 
     const allSkus=useMemo(()=>Object.keys(dbStock).map(s=>calcSku(s,aDI)),[aDI,adsW,dbStock,dbDates,dbInc]);
     const filtSkus=useMemo(()=>allSkus.filter(i=>{
         if(exZero&&i.currentStock===0)return false;
         if(only30&&i.daysRemaining>30)return false;
-        if(catF!=="ALL"&&i.category!==catF)return false;
         if(srch&&!i.sku.includes(srch))return false;
         return true;
-    }).sort((a,b)=>a.daysRemaining-b.daysRemaining),[allSkus,only30,exZero,srch,catF]);
+    }).sort((a,b)=>a.daysRemaining-b.daysRemaining),[allSkus,only30,exZero,srch]);
 
     const pend=useMemo(()=>{
         if(!dbDates.length)return[];
-        const lt=cleanDate(dbDates[dbDates.length-1]).getTime();
+        const lt=cleanDateForParse(dbDates[dbDates.length-1]).getTime();
         return dbInc.filter(i=>!i.isRegistered).map(i=>{
-            const dt=cleanDate(i.date).getTime();
-            if((lt-dt)/86400000>7)return null;
-            const arr=cleanDate(i.date);
+            const dt=cleanDateForParse(i.date).getTime();
+            if((lt-dt)/86400000>7)return null; 
+            const arr=cleanDateForParse(i.date);
             if(i.type==="택배")arr.setDate(arr.getDate()+3);
-            return{...i,arrDate:arr.toISOString().split('T')[0]};
+            const safeArrDate = isNaN(arr.getTime()) ? "알수없음" : arr.toISOString().split('T')[0];
+            return{...i,arrDate:safeArrDate};
         }).filter(Boolean);
     },[dbInc,dbDates]);
 
@@ -416,7 +540,7 @@ function App() {
         return dbDates.slice(0,aDI+1).map((d,i)=>({date:d,stock:dbStock[selSku][i]||0}));
     },[selSku,aDI,dbStock,dbDates]);
 
-    // 엑셀 업로드
+    // ── 엑셀 업로드 ──
     const handleUpload=e=>{
         const file=e.target.files[0]; if(!file)return;
         const reader=new FileReader();
@@ -512,10 +636,20 @@ function App() {
                     }catch(e){console.warn("출고 시트 스킵:",e);}
                 }
 
-                setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);
-                save(nAD,nAS,nInc,nRD,nRI);
-                if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
-                if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
+                if(useFirebase) {
+                    setDbSync("⏳ 저장 중...");
+                    db.doc(`yomimon_dashboard/inventory_master`).set({
+                        DATES: nAD, STOCK: nAS, INC: nInc, RD: nRD, RI: nRI, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }).then(()=>{
+                        notify("🎉 엑셀 데이터 클라우드 전송 완료!");
+                    }).catch(e=>{
+                        notify("클라우드 저장 실패", "err");
+                    });
+                } else {
+                    setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);
+                    try{localStorage.setItem(LS_KEY,JSON.stringify({DATES:nAD,STOCK:nAS,INC:nInc,RD:nRD,RI:nRI}));}catch(e){}
+                    notify("🎉 엑셀 분석 완료 (로컬 임시저장)");
+                }
             }catch(err){
                 console.error(err);
                 notify("엑셀 파일 파싱 오류.","err");
@@ -533,15 +667,25 @@ function App() {
             const us={...dbStock};
             const ci=dbDates.indexOf(aD);
             if(us[t.sku]&&ci!==-1)us[t.sku][ci]+=t.amount;
-            setDbInc(upd);setDbStock(us);
-            save(dbDates,us,upd,rDates,rItems);
+            
+            if(useFirebase) {
+                db.doc(`yomimon_dashboard/inventory_master`).set({
+                    DATES: dbDates, STOCK: us, INC: upd, RD: rDates, RI: rItems, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                setDbInc(upd);setDbStock(us);
+                try{localStorage.setItem(LS_KEY,JSON.stringify({DATES:dbDates,STOCK:us,INC:upd,RD:rDates,RI:rItems}));}catch(e){}
+            }
             notify(`✅ ${t.sku} 입고 완료! +${t.amount.toLocaleString()}개 즉시 합산됨`);
         }
     };
 
     const handleLogin=ev=>{
         ev.preventDefault();
-        if(pwd===SECRET_PASSWORD){setLoggedIn(true);sessionStorage.setItem("ili","1");}
+        if(pwd===SECRET_PASSWORD){
+            setLoggedIn(true);
+            try { sessionStorage.setItem("ili","1"); } catch(e){}
+        }
         else{setPwdErr(true);setPwd("");}
     };
 
@@ -557,7 +701,7 @@ function App() {
                     {pwdErr&&<p className="text-xs text-red-500 font-bold animate-bounce">⚠️ 비밀번호가 일치하지 않습니다.</p>}
                     <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-3 rounded-xl shadow-lg transition-colors">접속하기</button>
                 </form>
-                <p className="text-xs text-slate-400 mt-6">© 2026 요미몬(주) All Rights Reserved.</p>
+                <p className="text-xs text-slate-400 mt-6">© 2026 요미몬(주)</p>
             </div>
         </div>
     );
@@ -566,17 +710,21 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">N배송 & 로켓배송 통합 재고현황 <span className="text-indigo-400 font-extrabold">(v16)</span></h1>
+                    <h1 className="text-2xl font-bold">N배송 & 로켓배송 통합 재고현황 <span className="text-indigo-400 font-extrabold">(v20)</span></h1>
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                         {dbSync}
                     </span>
                 </div>
+                {/* 🚀 탭 명칭 변경 및 순서 조정 */}
                 <div className="flex gap-2 px-2 mt-0">
                     <button onClick={()=>setView("argo")} className={`px-6 py-3 font-extrabold text-sm rounded-t-xl tab-btn ${view==="argo"?'bg-slate-50 text-indigo-900 border-t-4 border-indigo-600':'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white mt-1'}`}>
-                        📦 N배송(아르고) 재고
+                        📦 N배송(품절 예상일)
                     </button>
                     <button onClick={()=>setView("rocket")} className={`px-6 py-3 font-extrabold text-sm rounded-t-xl tab-btn ${view==="rocket"?'bg-slate-50 text-blue-900 border-t-4 border-blue-600':'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white mt-1'}`}>
                         🚀 로켓배송 재고
+                    </button>
+                    <button onClick={()=>setView("argo_raw")} className={`px-6 py-3 font-extrabold text-sm rounded-t-xl tab-btn ${view==="argo_raw"?'bg-slate-50 text-emerald-900 border-t-4 border-emerald-600':'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white mt-1'}`}>
+                        📋 N배송 재고
                     </button>
                 </div>
             </header>
@@ -621,72 +769,157 @@ function App() {
                                     </div>
                                 </div>
                             </div>
-
-                            {/* 🚀 테이블 사이즈 고정 + 더미 열(스펀지) 추가로 레이아웃 완벽 방어 */}
                             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex-grow freeze-wrap">
-                                {filtRI.length===0?(
-                                    <div className="py-16 text-center">
-                                        <p className="text-slate-400 text-sm">조건에 맞는 상품이 없습니다.</p>
-                                        {!rShowZero&&<button onClick={()=>setRShowZero(true)} className="mt-3 text-xs text-blue-600 underline font-bold cursor-pointer">→ 재고 0개 상품도 표시하기</button>}
-                                    </div>
-                                ):(
-                                    <table className="w-full text-left border-collapse" style={{tableLayout:"fixed", minWidth:"100%"}}>
-                                        <colgroup>
-                                            <col style={{width:"var(--col-name)"}}/>
-                                            <col style={{width:"var(--col-opt)"}}/>
-                                            <col style={{width:"var(--col-sku)"}}/>
-                                            {visRD.map(d=><col key={d} style={{width:"75px"}}/>)}
-                                            {/* 🚀 이 투명한 더미 열이 화면에 남는 잉여 공간을 혼자 모두 빨아들입니다! */}
-                                            <col style={{width:"auto"}}/>
-                                        </colgroup>
-                                        <thead className="freeze-header">
-                                            <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
-                                                <th className="py-3 px-3 freeze-col-1">상품명</th>
-                                                <th className="py-3 px-2 freeze-col-2">구성</th>
-                                                <th className="py-3 px-2 freeze-col-3">SKU ID</th>
-                                                {visRD.map(d=><th key={d} className="py-3 px-1 text-center">{d.slice(5)}</th>)}
-                                                <th className="py-3 px-0 bg-slate-100"></th> {/* 더미 헤더 */}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="text-sm">
-                                            {filtRI.map((item,idx)=>{
-                                                const prevName=idx>0?filtRI[idx-1].name:null;
-                                                const isNewGroup=prevName!==null&&prevName!==item.name;
-                                                const bgCls = isNewGroup ? "bg-[#eff6ff]" : "bg-white"; 
-                                                const borderCls = isNewGroup ? "border-t-[3px] border-blue-400" : "border-t border-slate-100";
+                                <div className="p-0">
+                                    {filtRI.length===0?(
+                                        <div className="py-16 text-center">
+                                            <p className="text-slate-400 text-sm">해당 조건에 맞는 로켓배송 상품 내역이 없습니다.</p>
+                                        </div>
+                                    ):(
+                                        <table className="text-left border-collapse" style={{tableLayout:"fixed", width:`${380 + Math.max(1, visRD.length)*80}px`, minWidth:`${380 + Math.max(1, visRD.length)*80}px`}}>
+                                            <colgroup>
+                                                <col style={{width:"var(--col-name)"}}/>
+                                                <col style={{width:"var(--col-opt)"}}/>
+                                                <col style={{width:"var(--col-sku)"}}/>
+                                                {visRD.length===0 && <col style={{width:"150px"}}/>}
+                                                {visRD.map(d=><col key={d} style={{width:"80px"}}/>)}
+                                            </colgroup>
+                                            <thead className="freeze-header">
+                                                <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
+                                                    <th className="py-4 px-5 freeze-col-1 bg-slate-100">상품명</th>
+                                                    <th className="py-4 px-5 freeze-col-2 bg-slate-100">구성</th>
+                                                    <th className="py-4 px-5 freeze-col-3 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)]">SKU ID</th>
+                                                    {visRD.length===0 && <th className="py-4 px-5">해당 기간 데이터 없음</th>}
+                                                    {visRD.map(d=><th key={d} className="py-4 px-4 text-center sticky top-0 z-20 bg-slate-100">{d.slice(5)}</th>)}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 text-sm">
+                                                {filtRI.map((item,idx)=>{
+                                                    const prevName = idx>0 ? filtRI[idx-1].name : null;
+                                                    const isNewGroup = prevName!==null && prevName!==item.name;
+                                                    const bgCls = isNewGroup ? "bg-[#eff6ff]" : "bg-white"; 
+                                                    const borderCls = isNewGroup ? "border-t-[3px] border-blue-400" : "border-t border-slate-100";
 
-                                                return(
-                                                    <tr key={idx} className={`hover:bg-blue-50 transition-colors ${borderCls}`}>
-                                                        <td className={`py-3 px-3 font-extrabold whitespace-nowrap overflow-hidden text-ellipsis freeze-col-1 ${bgCls} ${isNewGroup?"text-blue-900":"text-slate-800"}`}>{item.name}</td>
-                                                        <td className={`py-3 px-2 whitespace-nowrap overflow-hidden text-ellipsis freeze-col-2 ${bgCls} ${isNewGroup?"text-blue-700":"text-slate-500"}`}>{item.option||"-"}</td>
-                                                        <td className={`py-3 px-2 font-mono text-xs whitespace-nowrap freeze-col-3 ${bgCls} ${isNewGroup?"text-blue-400":"text-slate-400"}`}>{item.skuId||"-"}</td>
-                                                        {visRD.map((d,i)=>{
-                                                            const v=item.history[d];
-                                                            const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
-                                                            return(
-                                                                <td key={i} className={`py-3 px-1 text-center font-bold ${bgCls} ${num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
-                                                                    {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
-                                                                </td>
-                                                            );
-                                                        })}
-                                                        <td className={bgCls}></td> {/* 더미 바디 */}
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                )}
+                                                    return(
+                                                        <tr key={idx} className={`hover:bg-blue-50 transition-colors ${borderCls}`}>
+                                                            <td className={`py-4 px-5 font-extrabold text-slate-800 freeze-col-1 whitespace-nowrap overflow-hidden text-ellipsis ${bgCls}`}>{item.name}</td>
+                                                            <td className={`py-4 px-5 text-slate-500 freeze-col-2 whitespace-nowrap overflow-hidden text-ellipsis ${bgCls}`}>{item.option||"-"}</td>
+                                                            <td className={`py-4 px-5 font-mono text-slate-400 text-xs freeze-col-3 whitespace-nowrap ${bgCls}`}>{item.skuId||"-"}</td>
+                                                            {visRD.length===0 && <td className={`py-4 px-5 ${bgCls}`}></td>}
+                                                            {visRD.map((d,i)=>{
+                                                                const v=item.history[d];
+                                                                const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
+                                                                return(
+                                                                    <td key={i} className={`py-4 px-4 text-center font-bold ${bgCls} ${num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
+                                                                        {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
                             </div>
                         </>
                     )}
                 </main>
             )}
 
-            {/* ─── N배송 탭 ─────────────────────────────────────────── */}
+            {/* ─── N배송(원시 데이터) 탭 ─────────────────────────────────────── */}
+            {view==="argo_raw"&&(
+                <main className="flex-grow w-full px-6 md:px-10 py-6 bg-slate-50 flex flex-col gap-6 animate-fade-in">
+                    {dbDates.length===0?(
+                        <div className="flex flex-col items-center justify-center py-28 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
+                            <span className="text-6xl mb-5">📋</span>
+                            <h3 className="text-xl font-extrabold text-slate-600">N배송 데이터가 없습니다</h3>
+                            <p className="text-sm text-slate-400 mt-2">하단 엑셀 업로드 영역에서 파일을 올려주세요.</p>
+                        </div>
+                    ):(
+                        <>
+                            <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+                                <h2 className="font-extrabold text-slate-800 text-xl px-2">
+                                    📋 N배송 재고
+                                    <span className="ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">{filtARaw.length}개 상품 표시</span>
+                                </h2>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer select-none bg-slate-100 px-3 py-2 rounded-xl">
+                                        <input type="checkbox" checked={aRawShowZero} onChange={e=>setARawShowZero(e.target.checked)} className="rounded border-slate-300 text-emerald-600 w-3.5 h-3.5 cursor-pointer"/>
+                                        <span>재고 0개도 보기</span>
+                                    </label>
+                                    {[["TODAY","오늘"],["5","5일"],["10","10일"],["15","15일"],["30","30일"],["THIS","이번달"],["LAST","지난달"]].map(([k,l])=>(
+                                        <button key={k} onClick={()=>setARawMode(k)}
+                                            className={`px-3 py-2 text-xs font-bold rounded-xl transition-all ${aRawMode===k?"bg-emerald-600 text-white shadow-md":"bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                                            {l}
+                                        </button>
+                                    ))}
+                                    <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
+                                        <Dropdown value={aRawY} options={aYears.map(y=>({value:y,label:`${y}년`}))} onChange={v=>{setARawY(v);setARawMode("MONTH");}}/>
+                                        <div className="w-px h-6 bg-slate-700"/>
+                                        <Dropdown value={aRawM} options={aRawMons.map(m=>({value:m,label:`${m}월`}))} onChange={v=>{setARawM(v);setARawMode("MONTH");}}/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex-grow freeze-wrap">
+                                <div className="p-0">
+                                    {filtARaw.length===0?(
+                                        <div className="py-16 text-center">
+                                            <p className="text-slate-400 text-sm">해당 조건에 맞는 N배송 상품 내역이 없습니다.</p>
+                                        </div>
+                                    ):(
+                                        <table className="w-full text-left border-collapse" style={{tableLayout:"fixed", minWidth:"1000px"}}>
+                                            <colgroup>
+                                                {/* 분류열 제거, SKU 1개열만 배치 */}
+                                                <col style={{width:"200px"}}/>
+                                                {visAD.length===0 && <col style={{width:"150px"}}/>}
+                                                {visAD.map(d=><col key={d} style={{width:"80px"}}/>)}
+                                                <col style={{width:"auto"}}/>
+                                            </colgroup>
+                                            <thead className="freeze-header">
+                                                <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
+                                                    <th className="py-4 px-5 sticky left-0 z-50 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300">SKU ID</th>
+                                                    {visAD.length===0 && <th className="py-4 px-5">해당 기간 데이터 없음</th>}
+                                                    {visAD.map(d=><th key={d} className="py-4 px-4 text-center sticky top-0 z-20 bg-slate-100">{d.slice(5)}</th>)}
+                                                    <th className="py-4 px-0 bg-slate-100 sticky top-0 z-20"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 text-sm">
+                                                {filtARaw.map((item,idx)=>{
+                                                    return(
+                                                        <tr key={idx} className={`hover:bg-emerald-50/40 transition-colors border-t border-slate-100`}>
+                                                            <td className={`py-4 px-5 font-bold text-slate-900 bg-white sticky left-0 z-40 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)] border-r border-slate-200 whitespace-nowrap overflow-hidden text-ellipsis`}>{item.sku}</td>
+                                                            {visAD.length===0 && <td className="py-4 px-5"></td>}
+                                                            {visAD.map((d,i)=>{
+                                                                const dateIdx = dbDates.indexOf(d);
+                                                                const val = item.history[dateIdx];
+                                                                const num = (val!=null&&val!==""&&val!=="-")?Number(val):null;
+                                                                return(
+                                                                    <td key={i} className={`py-4 px-4 text-center font-bold ${num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
+                                                                        {num!==null ? num.toLocaleString() : "-"}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                            <td></td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </main>
+            )}
+
+            {/* ─── N배송(분석) 탭 ─────────────────────────────────────────── */}
             {view==="argo"&&(
                 <main className="flex-grow w-full px-6 md:px-10 py-6 space-y-6 animate-fade-in">
                     <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-                        <h2 className="font-extrabold text-slate-800 text-xl px-2">📦 N배송(아르고) 분석 상황판</h2>
+                        <h2 className="font-extrabold text-slate-800 text-xl px-2">📦 N배송(품절 예상일) 상황판</h2>
                         <div className="flex flex-wrap items-center gap-3">
                             <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
                                 <Dropdown value={aY} options={aYears.map(y=>({value:y,label:`${y}년`}))} onChange={setAY}/>
@@ -695,7 +928,8 @@ function App() {
                                 <div className="w-px h-6 bg-slate-700"/>
                                 <Dropdown value={aD} options={aDatesM.map(d=>({value:d,label:`${d.slice(8)}일${d===dbDates[dbDates.length-1]?" (최신)":""}`}))} onChange={setAD}/>
                             </div>
-                            <Dropdown label="ADS 산정" value={adsW} options={[{value:3,label:"최근 3일"},{value:4,label:"최근 4일"},{value:5,label:"최근 5일"}]} onChange={setAdsW}/>
+                            <Dropdown label="ADS 산정" value={adsW} options={[{value:3,label:"최근 3회 집계"},{value:4,label:"최근 4회 집계"},{value:5,label:"최근 5회 집계"}]} onChange={setAdsW}/>
+                            <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 rounded-xl px-3 py-2">동일 날짜는 마지막 재고 기준 · ADS는 실제 경과일 기준</span>
                         </div>
                     </div>
 
@@ -747,14 +981,6 @@ function App() {
                                         📋 실시간 입출고/품절 예측 상황판
                                         <span className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-bold">{filtSkus.length}개 표시</span>
                                     </h2>
-                                    <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0">
-                                        {["ALL","클레이","플레이돌","와우펜","키즈탭","기타"].map(cat=>(
-                                            <button key={cat} onClick={()=>setCatF(cat)}
-                                                className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all ${catF===cat?"bg-indigo-600 text-white shadow-md":"bg-slate-200/60 text-slate-600 hover:bg-slate-200"}`}>
-                                                {cat==="ALL"?"전체":cat}
-                                            </button>
-                                        ))}
-                                    </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                                     <div className="md:col-span-6 relative">
@@ -773,33 +999,29 @@ function App() {
                                 </div>
                             </div>
                             <div className="freeze-wrap rounded-b-3xl">
-                                {/* N배송도 더미 열 추가하여 비율 붕괴 방지 */}
                                 <table className="w-full text-left border-collapse" style={{tableLayout:"fixed", minWidth:"820px"}}>
                                     <colgroup>
-                                        <col style={{width:"100px"}}/>
-                                        <col style={{width:"160px"}}/>
+                                        {/* 분류 삭제 후 SKU만 남김 */}
+                                        <col style={{width:"200px"}}/>
                                         <col style={{width:"110px"}}/>
                                         <col style={{width:"80px"}}/>
                                         <col style={{width:"130px"}}/>
                                         <col style={{width:"110px"}}/>
                                         <col style={{width:"120px"}}/>
-                                        <col style={{width:"auto"}}/>
                                     </colgroup>
                                     <thead className="freeze-header">
                                         <tr className="text-slate-500 text-xs font-extrabold uppercase tracking-wider border-b border-slate-200">
-                                            <th className="py-4 px-6 argo-col-1">분류</th>
-                                            <th className="py-4 px-6 argo-col-2">SKU</th>
+                                            <th className="py-4 px-6 sticky left-0 top-0 bg-slate-100 z-[60] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300">SKU</th>
                                             <th className="py-4 px-6 text-center z-[30]">현재고 ({aD.slice(5)})</th>
-                                            <th className="py-4 px-6 text-center z-[30]">ADS</th>
+                                            <th className="py-4 px-6 text-center z-[30]">ADS<br/><span className="text-[10px] text-slate-400 font-bold">경과일 기준</span></th>
                                             <th className="py-4 px-6 z-[30]">예상 품절일</th>
                                             <th className="py-4 px-6 z-[30]">잔여기간</th>
                                             <th className="py-4 px-6 text-right z-[30]">보충 필요(30일)</th>
-                                            <th className="py-4 px-0 bg-slate-100"></th> {/* 더미 헤더 */}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-sm">
                                         {filtSkus.length===0?(
-                                            <tr><td colSpan="8" className="py-12 text-center text-slate-400 font-medium">조건에 맞는 품목이 없습니다.</td></tr>
+                                            <tr><td colSpan="6" className="py-12 text-center text-slate-400 font-medium">조건에 맞는 품목이 없습니다.</td></tr>
                                         ):filtSkus.map(item=>{
                                             const isSel=selSku===item.sku;
                                             const isCrit=item.daysRemaining<=10;
@@ -807,13 +1029,12 @@ function App() {
                                             return(
                                                 <tr key={item.sku} onClick={()=>setSelSku(item.sku)}
                                                     className={`hover:bg-indigo-50/40 cursor-pointer transition-all border-l-4 ${isSel?"bg-indigo-50/80 border-l-indigo-600":"border-l-transparent"}`}>
-                                                    <td className="py-5 px-6 font-bold text-slate-400 bg-white argo-col-1">{item.category}</td>
-                                                    <td className="py-5 px-6 font-bold text-slate-900 bg-white argo-col-2">{item.sku}</td>
+                                                    <td className="py-5 px-6 font-bold text-slate-900 bg-white sticky left-0 z-[20] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)] border-r border-slate-200">{item.sku}</td>
                                                     <td className="py-5 px-6 text-center font-extrabold text-slate-900 text-base">
                                                         {item.currentStock.toLocaleString()}
                                                         {item.simulatedArrivals>0&&<span className="block text-xs text-emerald-600 font-extrabold mt-0.5">(+{item.simulatedArrivals} 예약)</span>}
                                                     </td>
-                                                    <td className="py-5 px-6 text-center font-mono font-bold text-slate-700">{item.ads.toFixed(2)}</td>
+                                                    <td className="py-5 px-6 text-center font-mono font-bold text-slate-700">{item.ads.toFixed(2)}<span className="block text-[10px] text-slate-400 font-sans mt-1">{item.adsStartDate?.slice(5)}~{item.adsEndDate?.slice(5)} · {item.adsCount}회/{item.adsDays}일</span></td>
                                                     <td className="py-5 px-6">
                                                         <span className={`font-mono text-sm px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 w-max ${isCrit?"bg-red-100 text-red-800":isWarn?"bg-amber-100 text-amber-800":"text-slate-600"}`}>
                                                             📅 {item.expectedStockoutDate}
@@ -825,7 +1046,6 @@ function App() {
                                                         </span>
                                                     </td>
                                                     <td className="py-5 px-6 text-right font-extrabold text-indigo-700 text-base">{item.replenishment30.toLocaleString()}</td>
-                                                    <td></td> {/* 더미 바디 */}
                                                 </tr>
                                             );
                                         })}
@@ -862,7 +1082,7 @@ function App() {
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
                     <div>
                         <h4 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
-                            📊 클라우드 DB 엑셀 연동 관리자
+                            📊 통합 엑셀 파일 직접 연동 관리자
                             <span className="text-xs bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-0.5 rounded-full">역방향 타임머신 적용 (완전체)</span>
                         </h4>
                         <p className="text-xs text-slate-400 mt-1">
@@ -888,3 +1108,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
+
