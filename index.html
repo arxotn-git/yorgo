@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>N배송(아르고) 재고현황 (v20)</title>
+    <title>N배송(아르고) 재고현황 (v21)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -710,7 +710,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">N배송 & 로켓배송 통합 재고현황 <span className="text-indigo-400 font-extrabold">(v20)</span></h1>
+                    <h1 className="text-2xl font-bold">N배송 & 로켓배송 통합 재고현황 <span className="text-indigo-400 font-extrabold">(v21)</span></h1>
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                         {dbSync}
                     </span>
@@ -797,20 +797,21 @@ function App() {
                                                 {filtRI.map((item,idx)=>{
                                                     const prevName = idx>0 ? filtRI[idx-1].name : null;
                                                     const isNewGroup = prevName!==null && prevName!==item.name;
-                                                    const bgCls = isNewGroup ? "bg-[#eff6ff]" : "bg-white"; 
-                                                    const borderCls = isNewGroup ? "border-t-[3px] border-blue-400" : "border-t border-slate-100";
+                                                    const bgCls = isNewGroup ? "bg-[#eff6ff]" : "bg-white";
+                                                    const borderCls = isNewGroup ? "border-t-[3px] border-blue-500" : "border-t border-slate-100";
+                                                    const groupLineCls = isNewGroup ? "border-t-[3px] border-blue-500" : "";
 
                                                     return(
                                                         <tr key={idx} className={`hover:bg-blue-50 transition-colors ${borderCls}`}>
-                                                            <td className={`py-4 px-5 font-extrabold text-slate-800 freeze-col-1 whitespace-nowrap overflow-hidden text-ellipsis ${bgCls}`}>{item.name}</td>
-                                                            <td className={`py-4 px-5 text-slate-500 freeze-col-2 whitespace-nowrap overflow-hidden text-ellipsis ${bgCls}`}>{item.option||"-"}</td>
-                                                            <td className={`py-4 px-5 font-mono text-slate-400 text-xs freeze-col-3 whitespace-nowrap ${bgCls}`}>{item.skuId||"-"}</td>
-                                                            {visRD.length===0 && <td className={`py-4 px-5 ${bgCls}`}></td>}
+                                                            <td className={`py-4 px-5 font-extrabold text-slate-800 freeze-col-1 whitespace-nowrap overflow-hidden text-ellipsis ${bgCls} ${groupLineCls}`}>{item.name}</td>
+                                                            <td className={`py-4 px-5 text-slate-500 freeze-col-2 whitespace-nowrap overflow-hidden text-ellipsis ${bgCls} ${groupLineCls}`}>{item.option||"-"}</td>
+                                                            <td className={`py-4 px-5 font-mono text-slate-400 text-xs freeze-col-3 whitespace-nowrap ${bgCls} ${groupLineCls}`}>{item.skuId||"-"}</td>
+                                                            {visRD.length===0 && <td className={`py-4 px-5 ${bgCls} ${groupLineCls}`}></td>}
                                                             {visRD.map((d,i)=>{
                                                                 const v=item.history[d];
                                                                 const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
                                                                 return(
-                                                                    <td key={i} className={`py-4 px-4 text-center font-bold ${bgCls} ${num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
+                                                                    <td key={i} className={`py-4 px-4 text-center font-bold ${bgCls} ${groupLineCls} ${num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
                                                                         {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
                                                                     </td>
                                                                 );
