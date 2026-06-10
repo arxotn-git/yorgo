@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>N배송(아르고) 재고현황 (v24)</title>
+    <title>N배송(아르고) 재고현황 (v25)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -16,6 +16,10 @@
 
     <!-- SheetJS (Excel Parser) CDN -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+    <!-- 🔥 파이어베이스 클라우드 연동 SDK 복구 -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
 
     <style>
         body { font-family: 'Inter', 'Noto Sans KR', sans-serif; }
@@ -54,8 +58,28 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useMemo, useEffect, useRef } = React;
-const SECRET_PASSWORD = "0501"; // ✅ 비번 0501로 원상복구
+const SECRET_PASSWORD = "0501"; // 비번 0501 유지
 const LS_KEY = "argo_dashboard_master_v1";
+
+// 🔥 클라우드 접속 키 복구
+const firebaseConfig = {
+    apiKey: "AIzaSyBnrzPtihZDHw-CS43-9LtiLTQbcHViF90",
+    authDomain: "yorgo-a795e.firebaseapp.com",
+    projectId: "yorgo-a795e",
+    storageBucket: "yorgo-a795e.firebasestorage.app",
+    messagingSenderId: "141001590652",
+    appId: "1:141001590652:web:71ea2419cda1fc9b0686f9"
+};
+
+let app, db;
+let useFirebase = false;
+try {
+    app = firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    useFirebase = true;
+} catch (e) {
+    console.error("Firebase Init Error:", e);
+}
 
 const cleanDateForParse = s => { if(!s) return new Date(); return new Date(String(s).split(/[\s(]/)[0].trim()); };
 const cleanSku = s => String(s||"").replace(/^요미몬\s+/,"").trim();
@@ -84,7 +108,6 @@ const INIT_STOCK = {
 };
 const SKU_ORDER = Object.keys(INIT_STOCK);
 
-// ✅ N배송 재고 그룹 묶음(선 긋기)을 위해 카테고리 매핑 원상복구
 const CATS = {
     "플레이돌":"플레이돌","플레이돌 맥스":"플레이돌","키즈탭 프로":"키즈탭",
     "키즈탭 프로 디즈니 확장패키지":"키즈탭","안심클레이 10종팩":"클레이","안심클레이 15종팩":"클레이",
@@ -207,10 +230,11 @@ function Dropdown({label,value,options,onChange}) {
 // Main React Application
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function App() {
+    const [dbSync, setDbSync] = useState("🔄 연결 중..."); // 클라우드 동기화 뱃지
     const [loggedIn, setLoggedIn]=useState(()=>{try{return sessionStorage.getItem("ili")==="1";}catch(e){return false;}});
     const [pwd,setPwd]=useState(""); const [pwdErr,setPwdErr]=useState(false);
     
-    // ✅ 접속 시 첫 화면을 "로켓배송"으로 고정 (순서 원상복구)
+    // 로켓배송 우선 탭 유지
     const [view,setView]=useState(()=>{try{return sessionStorage.getItem("activeTab")||"rocket";}catch(e){return "rocket";}});
     const changeView=v=>{setView(v);try{sessionStorage.setItem("activeTab",v);}catch(e){}};
 
@@ -221,6 +245,7 @@ function App() {
     const [rDates,setRDates]=useState([]);
     const [rItems,setRItems]=useState([]);
 
+    // 🔥 클라우드 실시간 동기화 복구
     useEffect(()=>{
         try{
             const raw=localStorage.getItem(LS_KEY);
@@ -233,11 +258,32 @@ function App() {
                 if(d.RI)setRItems(d.RI);
             }
         }catch(e){}
+
+        if (!useFirebase) { setDbSync("💾 로컬 저장소 사용 중"); return; }
+        
+        setDbSync("🔄 클라우드 연결 중...");
+        const docRef = db.doc(`yomimon_dashboard/inventory_master`);
+        const unsubscribe = docRef.onSnapshot((docSnap) => {
+            if (docSnap.exists) {
+                const d = docSnap.data();
+                if (d.DATES?.length) setDbDates(d.DATES);
+                if (d.STOCK) setDbStock(d.STOCK);
+                if (d.INC) setDbInc(d.INC);
+                if (d.RD) setRDates(d.RD);
+                if (d.RI) setRItems(d.RI);
+                setDbSync("☁️ 실시간 연동 완료");
+                try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch(e) {}
+            } else {
+                setDbSync("🗂️ DB가 비어있습니다. 엑셀을 업로드해주세요.");
+            }
+        }, (error) => {
+            console.error("Firestore 에러:", error);
+            setDbSync("❌ 통신 에러 (로컬 데이터 사용 중)");
+        });
+
+        return () => unsubscribe();
     },[]);
 
-    const save=(dates,stock,inc,rd,ri)=>{
-        try{localStorage.setItem(LS_KEY,JSON.stringify({DATES:dates,STOCK:stock,INC:inc,RD:rd,RI:ri}));}catch(e){}
-    };
     const notify=(msg,type="ok")=>{setNotif({msg,type});setTimeout(()=>setNotif(null),4500);};
 
     // ── N배송 분석 탭 필터 ──
@@ -376,7 +422,7 @@ function App() {
         return dbDates.slice(0,aDI+1).map((d,i)=>({date:d,stock:dbStock[selSku][i]||0}));
     },[selSku,aDI,dbStock,dbDates]);
 
-    // ── 엑셀 업로드 ──
+    // ── 엑셀 업로드 (클라우드 저장 복원) ──
     const handleUpload=e=>{
         const file=e.target.files[0]; if(!file)return;
         const reader=new FileReader();
@@ -449,11 +495,27 @@ function App() {
                     }catch(e){console.warn("출고 시트 스킵:",e);}
                 }
 
-                setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);
-                save(nAD,nAS,nInc,nRD,nRI);
-                if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
-                if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
-                notify("🎉 엑셀 분석 완료!");
+                // 🔥 클라우드 저장 복원 완료
+                if(useFirebase) {
+                    setDbSync("⏳ 저장 중...");
+                    db.doc(`yomimon_dashboard/inventory_master`).set({
+                        DATES: nAD, STOCK: nAS, INC: nInc, RD: nRD, RI: nRI,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }).then(() => {
+                        if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
+                        if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
+                        notify("🎉 엑셀 데이터 클라우드 전송 완료!");
+                    }).catch(e => {
+                        notify("클라우드 저장 실패", "err");
+                    });
+                } else {
+                    setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);
+                    try{localStorage.setItem(LS_KEY,JSON.stringify({DATES:nAD,STOCK:nAS,INC:nInc,RD:nRD,RI:nRI}));}catch(e){}
+                    if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
+                    if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
+                    notify("🎉 엑셀 분석 완료 (오프라인 임시저장)");
+                }
+
             }catch(err){console.error(err);notify("엑셀 파싱 오류.","err");}
         };
         reader.readAsBinaryString(file);
@@ -463,7 +525,17 @@ function App() {
         const t=pend[idx];const upd=[...dbInc];const gi=upd.findIndex(x=>x.sku===t.sku&&x.date===t.date&&x.amount===t.amount);
         if(gi!==-1){
             upd[gi]={...upd[gi],isRegistered:true};const us={...dbStock};const ci=dbDates.indexOf(aD);if(us[t.sku]&&ci!==-1)us[t.sku][ci]+=t.amount;
-            setDbInc(upd);setDbStock(us);save(dbDates,us,upd,rDates,rItems);
+            
+            // 🔥 클라우드 저장 복원 완료
+            if(useFirebase) {
+                db.doc(`yomimon_dashboard/inventory_master`).set({
+                    DATES: dbDates, STOCK: us, INC: upd, RD: rDates, RI: rItems,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                setDbInc(upd);setDbStock(us);
+                try{localStorage.setItem(LS_KEY,JSON.stringify({DATES:dbDates,STOCK:us,INC:upd,RD:rDates,RI:rItems}));}catch(e){}
+            }
             notify(`✅ ${t.sku} 입고 완료! +${t.amount.toLocaleString()}개 즉시 합산됨`);
         }
     };
@@ -501,10 +573,13 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">N배송(아르고) 재고현황 <span className="text-indigo-400 font-extrabold">(v24)</span></h1>
-                    <span className="text-xs bg-emerald-600/50 text-emerald-100 px-2.5 py-0.5 rounded-full font-bold">✅ 오프라인 저장소 가동중</span>
+                    <h1 className="text-2xl font-bold">N배송(아르고) 재고현황 <span className="text-indigo-400 font-extrabold">(v25)</span></h1>
+                    {/* 🔥 클라우드 연동 상태 뱃지 복원 완료 */}
+                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
+                        {dbSync}
+                    </span>
                 </div>
-                {/* ✅ 탭 순서를 로켓배송 -> 품절예상일 -> N배송 재고로 원상복구 */}
+                {/* 기존 배열 순서(로켓배송 우선) 및 border-transparent 속성 100% 유지 */}
                 <div className="flex gap-2 px-2 mt-0">
                     {[
                         ["rocket","🚀 로켓배송 재고","blue"],
@@ -570,11 +645,10 @@ function App() {
                                                 {visRD.map(d=><th key={d} className="py-3 px-4 text-center sticky top-0 z-20 bg-slate-100">{d.slice(5)}</th>)}
                                             </tr>
                                         </thead>
-                                        {/* ✅ 얇은 구분선 부활 및 굵은 선 덮어쓰기 로직 적용 완료 */}
-                                        <tbody className="divide-y divide-slate-100 text-sm">
+                                        <tbody className="text-sm">
                                             {filtRI.map((item,idx)=>{
                                                 const isNew=idx>0&&filtRI[idx-1].name!==item.name;
-                                                const rowCls=`hover:bg-blue-50/40 transition-colors ${isNew?"!border-t-[3px] !border-blue-500":""}`;
+                                                const rowCls=`hover:bg-blue-50/40 transition-colors ${isNew?"border-t-[3px] border-blue-500":"border-t border-slate-100"}`;
                                                 const bgNew=isNew?"bg-[#eff6ff]":"bg-white";
                                                 const txtNew=isNew?"text-blue-900":"text-slate-800";
                                                 return(
@@ -679,7 +753,6 @@ function App() {
                                             <th className="py-4 px-6 text-right z-[30]">보충 필요(30일)</th>
                                         </tr>
                                     </thead>
-                                    {/* ✅ 얇은 구분선 부활 */}
                                     <tbody className="divide-y divide-slate-100 text-sm">
                                         {filtSkus.length===0?(<tr><td colSpan="6" className="py-12 text-center text-slate-400 font-medium">조건에 맞는 품목이 없습니다.</td></tr>)
                                         :filtSkus.map(item=>{
@@ -768,13 +841,13 @@ function App() {
                                                 <th className="py-4 px-0 bg-slate-100 sticky top-0 z-20"></th>
                                             </tr>
                                         </thead>
-                                        {/* ✅ 카테고리 정보 복구를 통해 굵은 그룹핑 선 정상 부활 */}
-                                        <tbody className="divide-y divide-slate-100 text-sm">
+                                        <tbody className="text-sm">
                                             {filtARaw.map((item,idx)=>{
                                                 const prevCat=idx>0?CATS[filtARaw[idx-1].sku]:null;const curCat=CATS[item.sku];const isNew=prevCat!==null&&prevCat!==curCat;
                                                 const bg=isNew?"bg-[#ecfdf5]":"bg-white";
+                                                const rowCls=`hover:bg-emerald-50/40 transition-colors ${isNew?"border-t-[3px] border-emerald-400":"border-t border-slate-100"}`;
                                                 return(
-                                                    <tr key={idx} className={`hover:bg-emerald-50/40 transition-colors ${isNew?"!border-t-[3px] !border-emerald-400":""}`}>
+                                                    <tr key={idx} className={rowCls}>
                                                         <td className={`py-4 px-5 font-bold sticky left-0 z-40 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)] border-r border-slate-200 whitespace-nowrap overflow-hidden text-ellipsis ${bg} ${isNew?"text-emerald-900":"text-slate-900"}`}>{item.sku}</td>
                                                         {visAD.length===0&&<td className={bg}></td>}
                                                         {visAD.map((d,i)=>{
