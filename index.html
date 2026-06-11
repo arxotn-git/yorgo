@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>N배송(아르고) 재고현황 (v25)</title>
+    <title>N배송(아르고) 재고현황 (v26)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -39,6 +39,15 @@
         .freeze-wrap::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; border: 2px solid #e2e8f0; }
         .freeze-wrap::-webkit-scrollbar-thumb:hover { background: #64748b; }
         
+        /* 팝업(Toast) 애니메이션 */
+        @keyframes toastSlide {
+            0% { opacity: 0; transform: translate(-50%, -20px); }
+            100% { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .toast-animate {
+            animation: toastSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
         :root {
             --col-name: 150px; --col-opt: 120px; --col-sku: 110px;
             --col-l1: 150px; --col-l2: 270px;
@@ -58,10 +67,9 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useMemo, useEffect, useRef } = React;
-const SECRET_PASSWORD = "0501"; // 비번 0501 유지
+const SECRET_PASSWORD = "0501"; 
 const LS_KEY = "argo_dashboard_master_v1";
 
-// 🔥 클라우드 접속 키 복구
 const firebaseConfig = {
     apiKey: "AIzaSyBnrzPtihZDHw-CS43-9LtiLTQbcHViF90",
     authDomain: "yorgo-a795e.firebaseapp.com",
@@ -118,8 +126,23 @@ const CATS = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// 역방향 연도 추적 파서
+// 삭제된 Ghost Data 제거 및 병합 유틸리티 (v26 핵심엔진)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const cleanGhostDates = (existingDates, newDates) => {
+    if(!newDates.length) return existingDates;
+    const minD = newDates[0];
+    const maxD = newDates[newDates.length - 1];
+    
+    // 엑셀의 날짜 범위(minD ~ maxD) 내에 있으면서, 새로 올린 엑셀에는 없는 날짜(삭제된 열)는 걷어냅니다.
+    const filtered = existingDates.filter(d => {
+        if (d >= minD && d <= maxD) {
+            return newDates.includes(d);
+        }
+        return true; // 엑셀 범위 밖의 과거 데이터는 안전하게 보존합니다.
+    });
+    return [...new Set([...filtered, ...newDates])].sort();
+};
+
 const parseCellToParts = cell => {
     if (cell == null || cell === "") return null;
     if (cell instanceof Date) {
@@ -230,11 +253,10 @@ function Dropdown({label,value,options,onChange}) {
 // Main React Application
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function App() {
-    const [dbSync, setDbSync] = useState("🔄 연결 중..."); // 클라우드 동기화 뱃지
+    const [dbSync, setDbSync] = useState("🔄 연결 중..."); 
     const [loggedIn, setLoggedIn]=useState(()=>{try{return sessionStorage.getItem("ili")==="1";}catch(e){return false;}});
     const [pwd,setPwd]=useState(""); const [pwdErr,setPwdErr]=useState(false);
     
-    // 로켓배송 우선 탭 유지
     const [view,setView]=useState(()=>{try{return sessionStorage.getItem("activeTab")||"rocket";}catch(e){return "rocket";}});
     const changeView=v=>{setView(v);try{sessionStorage.setItem("activeTab",v);}catch(e){}};
 
@@ -245,7 +267,6 @@ function App() {
     const [rDates,setRDates]=useState([]);
     const [rItems,setRItems]=useState([]);
 
-    // 🔥 클라우드 실시간 동기화 복구
     useEffect(()=>{
         try{
             const raw=localStorage.getItem(LS_KEY);
@@ -284,7 +305,11 @@ function App() {
         return () => unsubscribe();
     },[]);
 
-    const notify=(msg,type="ok")=>{setNotif({msg,type});setTimeout(()=>setNotif(null),4500);};
+    // 🔥 논블로킹(Non-blocking) 3초 팝업 설정
+    const notify=(msg,type="ok")=>{
+        setNotif({msg,type, id: Date.now()});
+        setTimeout(()=>setNotif(null),3000); 
+    };
 
     // ── N배송 분석 탭 필터 ──
     const aYears=useMemo(()=>dbDates.length?[...new Set(dbDates.map(d=>d.slice(0,4)))].sort().reverse():["2026"],[dbDates]);
@@ -438,17 +463,24 @@ function App() {
                 let nAD=[...dbDates],nAS={...dbStock};
                 let nInc=[...dbInc];
 
+                // 🚀 로켓배송 파싱 및 삭제열/수정값 동기화
                 if(sRocket){
                     const p=parseSheetWithTimeline(sRocket,3); 
                     if(p&&p.dCols.length){
                         const{rows,hri,dCols,parsedDates}=p;
-                        nRD=[...new Set([...rDates,...parsedDates])].sort();
-                        const iMap={};nRI.forEach(it=>{iMap[`${it.name}_${it.option}`]={...it,history:{...it.history}};});
+                        nRD = cleanGhostDates(rDates, parsedDates); // 엑셀에서 지워진 과거열(Ghost) 자동 삭제
+                        const iMap={};
+                        nRI.forEach(it=>{iMap[`${it.name}_${it.option}`]={...it,history:{...it.history}};});
+                        
+                        const rExcelSkus = new Set();
                         for(let i=hri+1;i<rows.length;i++){
                             const row=rows[i];if(!row?.length)continue;
                             const name=String(row[0]||"").trim();const option=String(row[1]||"").trim();const skuId=String(row[2]||"").trim();
                             if(!name||name==="undefined")continue;
-                            const key=`${name}_${option}`;if(!iMap[key])iMap[key]={name,option,skuId,history:{}};
+                            const key=`${name}_${option}`;
+                            rExcelSkus.add(key);
+                            if(!iMap[key])iMap[key]={name,option,skuId,history:{}};
+                            
                             dCols.forEach((col,ci)=>{
                                 const raw=row[col.index];let val="-";
                                 if(raw!==""&&raw!=null){
@@ -456,24 +488,56 @@ function App() {
                                     else if(typeof raw==="number")val=Math.round(raw);
                                     else{const n=parseInt(String(raw).replace(/,/g,""));val=isNaN(n)?String(raw):n;}
                                 }
-                                iMap[key].history[parsedDates[ci]]=val;
+                                iMap[key].history[parsedDates[ci]]=val; // 수정된 값 그대로 덮어쓰기
                             });
                         }
+                        
+                        // 엑셀에서 통째로 삭제된 행이 있다면 데이터 빈칸(-) 처리
+                        Object.keys(iMap).forEach(key => {
+                            if(!rExcelSkus.has(key)) {
+                                parsedDates.forEach(pd => iMap[key].history[pd] = "-");
+                            }
+                        });
                         nRI=Object.values(iMap);
                     }
                 }
+                
+                // 📦 N배송 재고 파싱 및 삭제열/수정값 동기화
                 if(sArgo){
                     const p=parseSheetWithTimeline(sArgo,1); 
                     if(p&&p.dCols.length){
                         const{rows,hri,dCols,parsedDates}=p;
-                        nAD=[...new Set([...dbDates,...parsedDates])].sort();
-                        const orig={...dbStock};Object.keys(orig).forEach(k=>{nAS[k]=nAD.map(d=>{const oi=dbDates.indexOf(d);return oi!==-1?(orig[k]?.[oi]||0):0;});});
+                        nAD = cleanGhostDates(dbDates, parsedDates); // 엑셀에서 지워진 과거열(Ghost) 자동 삭제
+                        
+                        const orig={...dbStock};
+                        Object.keys(orig).forEach(k=>{
+                            nAS[k]=nAD.map(d=>{const oi=dbDates.indexOf(d);return oi!==-1?(orig[k]?.[oi]||0):0;});
+                        });
+                        
+                        const aExcelSkus = new Set();
                         for(let i=hri+1;i<rows.length;i++){
                             const row=rows[i];if(!row?.length)continue;
                             const sku=cleanSku(String(row[0]||"").trim());if(!sku||!CATS[sku])continue;
+                            aExcelSkus.add(sku);
                             if(!nAS[sku])nAS[sku]=new Array(nAD.length).fill(0);
-                            dCols.forEach((col,ci)=>{const raw=row[col.index];const val=typeof raw==="number"?Math.round(raw):(parseInt(String(raw).replace(/,/g,""))||0);const ui=nAD.indexOf(parsedDates[ci]);if(ui!==-1)nAS[sku][ui]=val;});
+                            
+                            dCols.forEach((col,ci)=>{
+                                const raw=row[col.index];
+                                const val=typeof raw==="number"?Math.round(raw):(parseInt(String(raw).replace(/,/g,""))||0);
+                                const ui=nAD.indexOf(parsedDates[ci]);
+                                if(ui!==-1)nAS[sku][ui]=val; // 수정된 값 그대로 덮어쓰기
+                            });
                         }
+                        
+                        // 엑셀에서 통째로 삭제된 품목이 있다면 0으로 초기화
+                        Object.keys(nAS).forEach(sku => {
+                            if(!aExcelSkus.has(sku)) {
+                                parsedDates.forEach(pd => {
+                                    const ui = nAD.indexOf(pd);
+                                    if(ui !== -1) nAS[sku][ui] = 0;
+                                });
+                            }
+                        });
                     }
                 }
                 if(sDisp){
@@ -495,7 +559,7 @@ function App() {
                     }catch(e){console.warn("출고 시트 스킵:",e);}
                 }
 
-                // 🔥 클라우드 저장 복원 완료
+                // 🔥 클라우드 저장 복원
                 if(useFirebase) {
                     setDbSync("⏳ 저장 중...");
                     db.doc(`yomimon_dashboard/inventory_master`).set({
@@ -504,7 +568,7 @@ function App() {
                     }).then(() => {
                         if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
                         if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
-                        notify("🎉 엑셀 데이터 클라우드 전송 완료!");
+                        notify("엑셀 데이터 클라우드 전송 및 동기화 완료!");
                     }).catch(e => {
                         notify("클라우드 저장 실패", "err");
                     });
@@ -513,7 +577,7 @@ function App() {
                     try{localStorage.setItem(LS_KEY,JSON.stringify({DATES:nAD,STOCK:nAS,INC:nInc,RD:nRD,RI:nRI}));}catch(e){}
                     if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
                     if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
-                    notify("🎉 엑셀 분석 완료 (오프라인 임시저장)");
+                    notify("엑셀 분석 완료 (오프라인 임시저장)");
                 }
 
             }catch(err){console.error(err);notify("엑셀 파싱 오류.","err");}
@@ -526,7 +590,6 @@ function App() {
         if(gi!==-1){
             upd[gi]={...upd[gi],isRegistered:true};const us={...dbStock};const ci=dbDates.indexOf(aD);if(us[t.sku]&&ci!==-1)us[t.sku][ci]+=t.amount;
             
-            // 🔥 클라우드 저장 복원 완료
             if(useFirebase) {
                 db.doc(`yomimon_dashboard/inventory_master`).set({
                     DATES: dbDates, STOCK: us, INC: upd, RD: rDates, RI: rItems,
@@ -536,7 +599,7 @@ function App() {
                 setDbInc(upd);setDbStock(us);
                 try{localStorage.setItem(LS_KEY,JSON.stringify({DATES:dbDates,STOCK:us,INC:upd,RD:rDates,RI:rItems}));}catch(e){}
             }
-            notify(`✅ ${t.sku} 입고 완료! +${t.amount.toLocaleString()}개 즉시 합산됨`);
+            notify(`${t.sku} 입고 완료! +${t.amount.toLocaleString()}개 즉시 합산됨`);
         }
     };
     const handleLogin=ev=>{
@@ -573,13 +636,11 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">N배송(아르고) 재고현황 <span className="text-indigo-400 font-extrabold">(v25)</span></h1>
-                    {/* 🔥 클라우드 연동 상태 뱃지 복원 완료 */}
+                    <h1 className="text-2xl font-bold">N배송(아르고) 재고현황 <span className="text-indigo-400 font-extrabold">(v26)</span></h1>
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                         {dbSync}
                     </span>
                 </div>
-                {/* 기존 배열 순서(로켓배송 우선) 및 border-transparent 속성 100% 유지 */}
                 <div className="flex gap-2 px-2 mt-0">
                     {[
                         ["rocket","🚀 로켓배송 재고","blue"],
@@ -594,9 +655,15 @@ function App() {
                 </div>
             </header>
 
-            {notif&&(
-                <div className="fixed top-24 right-6 z-[200]">
-                    <div className={`px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium ${notif.type==="err"?"bg-red-50 border-red-200 text-red-800":"bg-emerald-50 border-emerald-200 text-emerald-800"}`}>{notif.msg}</div>
+            {/* 🔥 마우스 간섭 없는 논블로킹(Non-blocking) 3초 팝업 적용 */}
+            {notif && (
+                <div className="fixed top-12 left-1/2 transform -translate-x-1/2 z-[9999] pointer-events-none toast-animate">
+                    <div className={`px-6 py-3 rounded-full shadow-2xl border-2 text-sm font-extrabold flex items-center gap-3 ${
+                        notif.type==="err" ? "bg-red-600 text-white border-red-700" : "bg-indigo-600 text-white border-indigo-700"
+                    }`}>
+                        <span className="text-xl">{notif.type==="err" ? "❌" : "✅"}</span>
+                        <span>{notif.msg}</span>
+                    </div>
                 </div>
             )}
 
@@ -873,9 +940,9 @@ function App() {
                     <div>
                         <h4 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
                             📊 통합 엑셀 파일 직접 연동 관리자
-                            <span className="text-xs bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-0.5 rounded-full">Super Parser V8 (타임머신 연동)</span>
+                            <span className="text-xs bg-indigo-100 text-indigo-700 font-extrabold px-2.5 py-0.5 rounded-full">Super Parser V9 (완전 동기화)</span>
                         </h4>
-                        <p className="text-xs text-slate-400 mt-1">로켓배송 / N배송 / 출고 엑셀이 합쳐진 파일 하나만 끌어다 놓으시면 브라우저가 수만 개의 과거 이력까지 스스로 복원하여 저장합니다.</p>
+                        <p className="text-xs text-slate-400 mt-1">파일을 끌어다 놓으시면, 엑셀에서 삭제되거나 변경된 값까지 100% 완벽하게 똑같이 동기화됩니다.</p>
                     </div>
                     <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 rounded-2xl p-10 text-center transition-colors bg-indigo-50/20 relative cursor-pointer">
                         <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} onClick={e=>e.target.value=null} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
