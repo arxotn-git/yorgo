@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 & N배송 재고 현황 (v32)</title>
+    <title>로켓배송 & N배송 재고 현황 (v35)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -13,6 +13,16 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+        // Babel의 기본 JSX 런타임(automatic)이 import 구문을 생성하여 브라우저 충돌을 일으키지 않도록,
+        // 그리고 pragma 충돌 오류가 발생하지 않도록 Classic 런타임 옵션을 명시적으로 등록합니다.
+        Babel.registerPreset('react-classic', {
+            presets: [
+                [Babel.availablePresets['react'], { runtime: 'classic' }]
+            ]
+        });
+    </script>
 
     <!-- SheetJS (Excel Parser) CDN -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -56,10 +66,10 @@
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 <div id="root"></div>
 
-<script type="text/babel">
+<script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const LS_KEY = "argo_dashboard_master_v32"; // 버전 v32로 업데이트
+const LS_KEY = "argo_dashboard_master_v35"; // 버전 v35로 업데이트
 
 const firebaseConfig = {
     apiKey: "AIzaSyBnrzPtihZDHw-CS43-9LtiLTQbcHViF90",
@@ -704,7 +714,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v32)</span></h1>
+                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v35)</span></h1>
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                         {dbSync}
                     </span>
