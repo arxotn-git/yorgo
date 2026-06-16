@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 & N배송 재고 현황 (v30)</title>
+    <title>로켓배송 & N배송 재고 현황 (v32)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -59,7 +59,7 @@
 <script type="text/babel">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const LS_KEY = "argo_dashboard_master_v30"; // 버전 30로 업데이트 (캐시 초기화 목적)
+const LS_KEY = "argo_dashboard_master_v32"; // 버전 v32로 업데이트
 
 const firebaseConfig = {
     apiKey: "AIzaSyBnrzPtihZDHw-CS43-9LtiLTQbcHViF90",
@@ -81,14 +81,7 @@ try {
 }
 
 const cleanDateForParse = s => { if(!s) return new Date(); return new Date(String(s).split(/[\s(]/)[0].trim()); };
-const cleanSku = s => {
-    let str = String(s || "").replace(/^요미몬\s+/, "").trim();
-    // '단포', '단수', '단수(안전봉투)' 등 불필요한 꼬리표 완벽 제거 정규식
-    str = str.replace(/\s*단포\s*$/i, "");
-    str = str.replace(/\s*단수\s*(\(.*?\))?\s*$/i, "");
-    str = str.replace(/\s*박스\s*$/i, "");
-    return str.trim();
-};
+const cleanSku = s => String(s||"").replace(/^요미몬\s+/,"").trim();
 
 const INIT_STOCK = {
     "플레이돌":[99,95,95,93,92,88,88,88,86,86,82,81,79,79,79,79,78,78,71,69,64],
@@ -217,35 +210,6 @@ const parseSheetWithTimeline = (sheet, skipCols=0) => {
     return { rows, hri, dCols, parsedDates: dCols.map(c=>c.label) };
 };
 
-const getMergedStockData = (rawStock, rawOrder) => {
-    const newStock = {};
-    const newOrder = [];
-    if (rawStock) {
-        Object.keys(rawStock).forEach(key => {
-            const cKey = cleanSku(key); // 정제된 키 생성
-            if (!newStock[cKey]) {
-                newStock[cKey] = [...rawStock[key]];
-                newOrder.push(cKey);
-            } else {
-                // 이미 동일한 상품이 존재하면 배열 값 합산 (병합)
-                rawStock[key].forEach((v, i) => {
-                    newStock[cKey][i] = (newStock[cKey][i] || 0) + v;
-                });
-            }
-        });
-    }
-    const finalOrder = [];
-    if (rawOrder && rawOrder.length > 0) {
-        rawOrder.forEach(k => {
-            const ck = cleanSku(k);
-            if (!finalOrder.includes(ck)) finalOrder.push(ck);
-        });
-    } else {
-        finalOrder.push(...newOrder);
-    }
-    return { mergedStock: newStock, mergedOrder: finalOrder };
-};
-
 function Dropdown({label,value,options,onChange}) {
     const [open,setOpen]=useState(false);
     const ref=useRef(null);
@@ -301,15 +265,11 @@ function App() {
             if(raw){
                 const d=JSON.parse(raw);
                 if(d.DATES?.length)setDbDates(d.DATES);
-                
-                // 로컬 데이터 병합
-                const { mergedStock, mergedOrder } = getMergedStockData(d.STOCK, d.AORDER);
-                if(Object.keys(mergedStock).length) setDbStock(mergedStock);
-                if(mergedOrder.length) setAOrder(mergedOrder);
-
+                if(d.STOCK&&Object.keys(d.STOCK).length)setDbStock(d.STOCK);
                 if(d.INC)setDbInc(d.INC);
                 if(d.RD)setRDates(d.RD);
                 if(d.RI)setRItems(d.RI);
+                if(d.AORDER)setAOrder(d.AORDER);
             }
         }catch(e){}
 
@@ -320,19 +280,15 @@ function App() {
         const unsubscribe = docRef.onSnapshot((docSnap) => {
             if (docSnap.exists) {
                 const d = docSnap.data();
-                
-                // 클라우드에서 받은 과거 데이터 강제 병합 처리
-                const { mergedStock, mergedOrder } = getMergedStockData(d.STOCK, d.AORDER);
-                
                 if (d.DATES?.length) setDbDates(d.DATES);
-                setDbStock(mergedStock);
-                setAOrder(mergedOrder);
+                if (d.STOCK && Object.keys(d.STOCK).length) setDbStock(d.STOCK);
                 if (d.INC) setDbInc(d.INC);
                 if (d.RD) setRDates(d.RD);
                 if (d.RI) setRItems(d.RI);
+                if (d.AORDER?.length) setAOrder(d.AORDER);
                 
                 setDbSync("☁️ 실시간 연동 완료");
-                try { localStorage.setItem(LS_KEY, JSON.stringify({...d, STOCK: mergedStock, AORDER: mergedOrder})); } catch(e) {}
+                try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch(e) {}
             } else {
                 setDbSync("🗂️ DB가 비어있습니다. 엑셀을 업로드해주세요.");
             }
@@ -361,7 +317,7 @@ function App() {
     useEffect(()=>{if(aDatesM.length&&!aDatesM.includes(aD))setAD(aDatesM[0]);},[aDatesM]);
 
     // ── 로켓 필터 ──
-    const [rMode,setRMode]=useState("10"); // 기본값 10일로 변경
+    const [rMode,setRMode]=useState("10"); // 기본값 10일로 유지
     const [rShowZero,setRShowZero]=useState(false); 
     const rYears=useMemo(()=>rDates.length?[...new Set(rDates.map(d=>d.slice(0,4)))].sort().reverse():["2026"],[rDates]);
     const [rY,setRY]=useState(()=>rYears[0]||"2026");
@@ -400,7 +356,7 @@ function App() {
     },[rItems,rDates,rShowZero]);
 
     // ── N배송 원본 필터 ──
-    const [aRawMode,setARawMode]=useState("10"); // 기본값 10일로 변경
+    const [aRawMode,setARawMode]=useState("10"); // 기본값 10일로 유지
     const [aRawShowZero,setARawShowZero]=useState(false);
     const [aRawY,setARawY]=useState(()=>aYears[0]||"2026");
     const aRawMons=useMemo(()=>dbDates.length?[...new Set(dbDates.filter(d=>d.startsWith(aRawY)).map(d=>d.slice(5,7)))].sort().reverse():["06"],[dbDates,aRawY]);
@@ -438,19 +394,52 @@ function App() {
 
     const toDateKey=v=>{if(!v)return"";const dt=cleanDateForParse(v);if(!isNaN(dt.getTime()))return dt.toISOString().split('T')[0];const m=String(v).match(/\d{4}-\d{2}-\d{2}/);return m?m[0]:String(v).split(" ")[0];};
     const calDays=(s,e)=>{if(isNaN(s.getTime())||isNaN(e.getTime())||e<=s)return 0;return Math.max(1,Math.ceil((e-s)/86400000));};
-    const closeIdx=(dates,key,max)=>{for(let i=Math.min(max,dates.length-1);i>=0;i--)if(toDateKey(dates[i])===key)return i;return-1;};
-    const findWin=(dates,ti,count)=>{
-        const endKey=toDateKey(dates[ti]);const endIdx=closeIdx(dates,endKey,ti);const endDt=cleanDateForParse(endKey);
-        let startIdx=0,days=1,picked=1;const seen=new Set([endKey]);
-        for(let i=endIdx-1;i>=0;i--){const key=toDateKey(dates[i]);if(!key||seen.has(key))continue;seen.add(key);const ci=closeIdx(dates,key,endIdx-1);const cDt=cleanDateForParse(key);picked++;startIdx=ci;days=calDays(cDt,endDt);if(picked>=count)break;}
-        return{startIndex:startIdx,endIndex:endIdx,startDate:toDateKey(dates[startIdx]),endDate:endKey,days:Math.max(1,days),count:picked};
+    
+    // 🔥 달력 일수 기반(Calendar Days-based) 윈도우 찾기 로직으로 완전 교체 🔥
+    const findWinByDays = (dates, ti, daysBack) => {
+        const endKey = toDateKey(dates[ti]);
+        const endDt = cleanDateForParse(endKey);
+
+        // 1. 계산 기준이 되는 정확한 과거 날짜(Target Start Date)를 도출
+        const targetStartDt = new Date(endDt);
+        targetStartDt.setDate(targetStartDt.getDate() - daysBack);
+        const targetStartKey = targetStartDt.toISOString().split('T')[0];
+
+        let startIdx = 0; // 충분한 과거 데이터가 없으면 제일 오래된 데이터로 대체
+        let actualStartKey = toDateKey(dates[0]);
+
+        // 2. 현재 선택된 시점(ti)부터 거꾸로 내려가며, Target Date와 같거나 더 이전인 날짜를 찾음 (주말 우회)
+        for (let i = ti; i >= 0; i--) {
+            const k = toDateKey(dates[i]);
+            if (k <= targetStartKey) {
+                startIdx = i;
+                actualStartKey = k;
+                break;
+            }
+        }
+
+        // 3. 실제 찾은 과거 날짜와 오늘 날짜 사이의 '진짜 경과 일수' 계산
+        const actualStartDt = cleanDateForParse(actualStartKey);
+        let daysElapsed = calDays(actualStartDt, endDt);
+        
+        // 오류 방지 (최소 1일)
+        if (daysElapsed < 1) daysElapsed = 1;
+
+        return {
+            startIndex: startIdx,
+            endIndex: ti,
+            startDate: actualStartKey,
+            endDate: endKey,
+            days: daysElapsed
+        };
     };
 
     const aDI=useMemo(()=>{const i=dbDates.indexOf(aD);return i!==-1?i:Math.max(0,dbDates.length-1);},[aD,dbDates]);
     const calcSku=(sku,ti)=>{
-        const win=findWin(dbDates,ti,adsW);
+        const win=findWinByDays(dbDates,ti,Number(adsW));
         const cur=dbStock[sku]?.[win.endIndex]||0;const ss=dbStock[sku]?.[win.startIndex]||0;
         const sDt=cleanDateForParse(win.startDate);const tDt=cleanDateForParse(win.endDate);const days=win.days;const delta=ss-cur;
+        
         let wi=0,pa=0;
         dbInc.forEach(inc=>{
             if(inc.sku!==sku)return;
@@ -459,11 +448,14 @@ function App() {
             if(inc.isRegistered){present=true;if(dt>sDt&&dt<=tDt&&cur<inc.amount*0.8&&delta>=0)present=false;}
             if(present){if(dt>sDt&&dt<=tDt)wi+=inc.amount;}else pa+=inc.amount;
         });
+        
+        // 실제 달력 기준 경과 일수(days)로 나누어 일평균을 계산함
         const ads=Math.max(0,parseFloat(((delta+wi)/days).toFixed(2)));
         let dr=Infinity,esd="안전 (우려없음)",drt="99일 이상";
         if(ads>0){const tot=cur+pa;dr=tot/ads;if(dr<365){const sd=new Date(tDt);sd.setDate(sd.getDate()+Math.floor(dr));esd=isNaN(sd.getTime())?"계산불가":sd.toISOString().split('T')[0];drt=`${Math.ceil(dr)}일 남음`;}}
-        return{sku,category:CATS[sku]||"기타",currentStock:cur,ads,adsDays:days,adsCount:win.count,adsStartDate:win.startDate,adsEndDate:win.endDate,daysRemaining:dr,displayRemainingText:drt,expectedStockoutDate:esd,replenishment30:ads>0?Math.ceil(ads*30):0,simulatedArrivals:pa};
+        return{sku,category:CATS[sku]||"기타",currentStock:cur,ads,adsDays:days,adsStartDate:win.startDate,adsEndDate:win.endDate,daysRemaining:dr,displayRemainingText:drt,expectedStockoutDate:esd,replenishment30:ads>0?Math.ceil(ads*30):0,simulatedArrivals:pa};
     };
+    
     const allSkus=useMemo(()=>Object.keys(dbStock).map(s=>calcSku(s,aDI)),[aDI,adsW,dbStock,dbDates,dbInc]);
     const filtSkus=useMemo(()=>allSkus.filter(i=>{
         if(exZero&&i.currentStock===0)return false;if(only30&&i.daysRemaining>30)return false;if(srch&&!i.sku.includes(srch))return false;
@@ -560,6 +552,10 @@ function App() {
                         
                         const aExcelSkus = new Set();
                         nAOrder = [];
+                        
+                        // 🔥 엑셀 데이터 합산 임시 저장소 (중복 업로드 증식 방지용)
+                        const excelAgg = {};
+
                         for(let i=hri+1;i<rows.length;i++){
                             const row=rows[i];if(!row?.length)continue;
                             const name = String(row[0]||"").trim();
@@ -573,16 +569,28 @@ function App() {
                             aExcelSkus.add(sku);
                             if(!nAOrder.includes(sku)) nAOrder.push(sku);
 
-                            if(!nAS[sku])nAS[sku]=new Array(nAD.length).fill(0);
+                            if(!excelAgg[sku]) excelAgg[sku] = {};
                             
                             dCols.forEach((col,ci)=>{
                                 const raw=row[col.index];
                                 const val=typeof raw==="number"?Math.round(raw):(parseInt(String(raw).replace(/,/g,""))||0);
-                                const ui=nAD.indexOf(parsedDates[ci]);
-                                // 동일 상품(여러 출고형태)이 분리되어 있을 경우를 대비해 기존 값에 더함 (초기값은 0이므로 안전)
-                                if(ui!==-1) nAS[sku][ui] += val;
+                                const pd=parsedDates[ci];
+                                
+                                if(!excelAgg[sku][pd]) excelAgg[sku][pd] = 0;
+                                excelAgg[sku][pd] += val; // 엑셀 파일 내에서만 합산
                             });
                         }
+                        
+                        // 🔥 합산된 데이터를 기존 DB에 덮어쓰기 (기존의 누적되는 += 버그 해결)
+                        Object.keys(excelAgg).forEach(sku => {
+                            if(!nAS[sku]) nAS[sku] = new Array(nAD.length).fill(0);
+                            parsedDates.forEach(pd => {
+                                const ui = nAD.indexOf(pd);
+                                if(ui !== -1) {
+                                    nAS[sku][ui] = excelAgg[sku][pd];
+                                }
+                            });
+                        });
                         
                         Object.keys(nAS).forEach(sku => {
                             if(!aExcelSkus.has(sku)) {
@@ -621,6 +629,9 @@ function App() {
                         DATES: nAD, STOCK: nAS, INC: nInc, RD: nRD, RI: nRI, AORDER: nAOrder,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     }).then(() => {
+                        // onSnapshot 도착 전에 로컬 state 즉시 반영 → aDI 오류 방지 및 ADS 폭등 문제 해결
+                        setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);setAOrder(nAOrder);
+                        
                         if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
                         if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
                         notify("엑셀 데이터 클라우드 전송 및 동기화 완료!");
@@ -693,7 +704,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v30)</span></h1>
+                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v32)</span></h1>
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                         {dbSync}
                     </span>
@@ -813,7 +824,13 @@ function App() {
                                 <div className="w-px h-6 bg-slate-700"/>
                                 <Dropdown value={aD} options={aDatesM.map(d=>({value:d,label:`${d.slice(8)}일${d===dbDates[dbDates.length-1]?" (최신)":""}`}))} onChange={setAD}/>
                             </div>
-                            <Dropdown label="ADS 산정" value={adsW} options={[{value:3,label:"최근 3회 집계"},{value:4,label:"최근 4회 집계"},{value:5,label:"최근 5회 집계"}]} onChange={setAdsW}/>
+                            <Dropdown label="ADS 기준" value={adsW} options={[
+                                {value:3,label:"최근 3일 기준"},
+                                {value:4,label:"최근 4일 기준"},
+                                {value:5,label:"최근 5일 기준"},
+                                {value:7,label:"최근 7일 기준"},
+                                {value:14,label:"최근 14일 기준"}
+                            ]} onChange={setAdsW}/>
                         </div>
                     </div>
 
