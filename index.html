@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 & N배송 재고 현황 (v40)</title>
+    <title>로켓배송 & N배송 재고 현황 (v41)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const LS_KEY = "argo_dashboard_master_v40"; // 🔥 버전 v40 (캐시 리셋)
+const LS_KEY = "argo_dashboard_master_v41"; // 🔥 버전 v41 (캐시 리셋)
 
 const firebaseConfig = {
     apiKey: "AIzaSyBnrzPtihZDHw-CS43-9LtiLTQbcHViF90",
@@ -98,7 +98,7 @@ const cleanSku = s => {
     return str;
 };
 
-// 🔥 [핵심 픽스] 과거 파편화된 단포/단수 데이터를 깨끗한 단일 SKU로 완벽하게 이어붙이는 엔진
+// 🔥 과거 파편화된 단포/단수 데이터를 깨끗한 단일 SKU로 완벽하게 이어붙이는 엔진
 const mergeStockHistory = (stockObj) => {
     if(!stockObj) return {};
     const merged = {};
@@ -107,7 +107,6 @@ const mergeStockHistory = (stockObj) => {
         if(!merged[cleanK]) {
             merged[cleanK] = [...stockObj[oldKey]];
         } else {
-            // 과거 배열 데이터 요소별 합산 처리
             stockObj[oldKey].forEach((val, i) => {
                 merged[cleanK][i] = (merged[cleanK][i] || 0) + (val || 0);
             });
@@ -140,7 +139,6 @@ const INIT_STOCK = {
 };
 const SKU_ORDER = Object.keys(INIT_STOCK);
 
-// 🚀 동적 카테고리 매핑 엔진
 const getGroup = sku => {
     if (!sku) return "기타";
     if (sku.includes("플레이돌")) return "플레이돌";
@@ -291,6 +289,9 @@ function App() {
     const [rDates,setRDates]=useState([]);
     const [rItems,setRItems]=useState([]);
     const [aOrder,setAOrder]=useState([]); 
+    
+    // 🔥 전역 검색어 State (탭 변경시에도 검색어 유지)
+    const [srch,setSrch]=useState(""); 
 
     useEffect(()=>{
         try{
@@ -298,7 +299,6 @@ function App() {
             if(raw){
                 const d=JSON.parse(raw);
                 if(d.DATES?.length)setDbDates(d.DATES);
-                // 🔥 로컬 데이터 로드 시에도 과거 파편화 기록들을 하나로 영구 병합 처리!
                 if(d.STOCK&&Object.keys(d.STOCK).length)setDbStock(mergeStockHistory(d.STOCK));
                 if(d.INC)setDbInc(d.INC);
                 if(d.RD)setRDates(d.RD);
@@ -315,7 +315,6 @@ function App() {
             if (docSnap.exists) {
                 const d = docSnap.data();
                 if (d.DATES?.length) setDbDates(d.DATES);
-                // 🔥 클라우드 로드 시에도 과거 파편화 기록들을 하나로 영구 병합 처리!
                 if (d.STOCK && Object.keys(d.STOCK).length) setDbStock(mergeStockHistory(d.STOCK));
                 if (d.INC) setDbInc(d.INC);
                 if (d.RD) setRDates(d.RD);
@@ -378,6 +377,13 @@ function App() {
 
     const filtRI=useMemo(()=>{
         return rItems.filter(item=>{
+            if(srch){
+                const term = srch.toLowerCase();
+                const mName = String(item.name || "").toLowerCase().includes(term);
+                const mOpt = String(item.option || "").toLowerCase().includes(term);
+                const mSku = String(item.skuId || "").toLowerCase().includes(term);
+                if(!mName && !mOpt && !mSku) return false;
+            }
             if(!rShowZero){
                 const last30=rDates.slice(-30);
                 const hasStock=last30.some(d=>{
@@ -388,7 +394,7 @@ function App() {
             }
             return true;
         });
-    },[rItems,rDates,rShowZero]);
+    },[rItems,rDates,rShowZero,srch]);
 
     // ── N배송 원본 필터 ──
     const [aRawMode,setARawMode]=useState("10"); 
@@ -411,6 +417,7 @@ function App() {
     const filtARaw=useMemo(()=>{
         return Object.keys(dbStock).filter(sku=>{
             if(!sku)return false;
+            if(srch && !sku.toLowerCase().includes(srch.toLowerCase())) return false;
             if(!aRawShowZero){const has=visAD.some(d=>{const idx=dbDates.indexOf(d);const v=dbStock[sku]?.[idx];return v!=null&&v>0;});if(!has)return false;}
             return true;
         }).map(sku=>({sku,history:dbStock[sku]}))
@@ -421,16 +428,15 @@ function App() {
             if (ib === -1) ib = SKU_ORDER.indexOf(b.sku) > -1 ? SKU_ORDER.indexOf(b.sku) + 1000 : 9999;
             return ia - ib;
         });
-    },[dbStock,dbDates,visAD,aRawShowZero,aOrder]);
+    },[dbStock,dbDates,visAD,aRawShowZero,aOrder,srch]);
 
     // ── N배송 ADS 계산 ──
     const [adsW,setAdsW]=useState(4);const [only30,setOnly30]=useState(true);
-    const [exZero,setExZero]=useState(true);const [srch,setSrch]=useState("");const [selSku,setSelSku]=useState("");
+    const [exZero,setExZero]=useState(true);const [selSku,setSelSku]=useState("");
 
     const toDateKey=v=>{if(!v)return"";const dt=cleanDateForParse(v);if(!isNaN(dt.getTime()))return dt.toISOString().split('T')[0];const m=String(v).match(/\d{4}-\d{2}-\d{2}/);return m?m[0]:String(v).split(" ")[0];};
     const calDays=(s,e)=>{if(isNaN(s.getTime())||isNaN(e.getTime())||e<=s)return 0;return Math.max(1,Math.ceil((e-s)/86400000));};
     
-    // 달력 일수 기반(Calendar Days-based) 윈도우 찾기 로직 
     const findWinByDays = (dates, ti, daysBack) => {
         const endKey = toDateKey(dates[ti]);
         const endDt = cleanDateForParse(endKey);
@@ -467,21 +473,20 @@ function App() {
 
     const aDI=useMemo(()=>{const i=dbDates.indexOf(aD);return i!==-1?i:Math.max(0,dbDates.length-1);},[aD,dbDates]);
     
-    // 🔥 깔끔하고 투명해진 하드코어 ADS 산출 엔진
     const calcSku=(sku,ti)=>{
         const win=findWinByDays(dbDates,ti,Number(adsW));
         
         let totalSales = 0;
         let validDays = 0;
         
-        // 기간 내 하루하루의 재고 변화를 정밀 추적
         for (let i = win.startIndex; i < win.endIndex; i++) {
             const stockA = dbStock[sku]?.[i] || 0;
             const stockB = dbStock[sku]?.[i+1] || 0;
             
             const dtA = cleanDateForParse(toDateKey(dbDates[i]));
             const dtB = cleanDateForParse(toDateKey(dbDates[i+1]));
-            let dayGap = Math.max(1, calDays(dtA, dtB));
+            let dayGap = calDays(dtA, dtB);
+            if (dayGap < 1) dayGap = 1;
             
             let incAmt = 0;
             dbInc.forEach(inc => {
@@ -493,10 +498,8 @@ function App() {
                 }
             });
             
-            // 보정된 실제 판매량 = (어제 재고 + 오늘 입고량) - 오늘 재고
             const realSales = stockA + incAmt - stockB;
             
-            // 실 판매량이 0 이상이면 정상 데이터로 간주 (0건 판매도 포함!)
             if (realSales >= 0) {
                 totalSales += realSales;
                 validDays += dayGap;
@@ -507,16 +510,16 @@ function App() {
         if (validDays > 0) {
             ads = totalSales / validDays;
         } else if (win.startIndex > 0) {
-            // [방어 로직]: 만약 조회 기간 내내 "입고(재고증가)"만 발생해서 유효 데이터가 단 하루도 남지 않았을 경우에만 과거로 거슬러 올라감
-            const scanLimit = Math.max(0, win.endIndex - 14);
-            for (let i = win.endIndex - 1; i >= scanLimit; i--) {
+            for (let i = win.startIndex - 1; i >= 0; i--) {
                 const sA = dbStock[sku]?.[i] || 0;
                 const sB = dbStock[sku]?.[i+1] || 0;
+                const dtA = cleanDateForParse(toDateKey(dbDates[i]));
+                const dtB = cleanDateForParse(toDateKey(dbDates[i+1]));
+                const dGap = Math.max(1, calDays(dtA, dtB));
+                
                 const diff = sA - sB;
                 if (diff >= 0) {
-                    const dtA = cleanDateForParse(toDateKey(dbDates[i]));
-                    const dtB = cleanDateForParse(toDateKey(dbDates[i+1]));
-                    ads = diff / Math.max(1, calDays(dtA, dtB));
+                    ads = diff / dGap;
                     break;
                 }
             }
@@ -550,8 +553,10 @@ function App() {
     };
     
     const allSkus=useMemo(()=>Object.keys(dbStock).map(s=>calcSku(s,aDI)),[aDI,adsW,dbStock,dbDates,dbInc]);
+    
     const filtSkus=useMemo(()=>allSkus.filter(i=>{
-        if(exZero&&i.currentStock===0)return false;if(only30&&i.daysRemaining>30)return false;if(srch&&!i.sku.includes(srch))return false;
+        if(exZero&&i.currentStock===0)return false;if(only30&&i.daysRemaining>30)return false;
+        if(srch && !i.sku.toLowerCase().includes(srch.toLowerCase())) return false;
         return true;
     }).sort((a,b)=>a.daysRemaining-b.daysRemaining),[allSkus,only30,exZero,srch]);
 
@@ -638,7 +643,6 @@ function App() {
                         const{rows,hri,dCols,parsedDates}=p;
                         nAD = cleanGhostDates(dbDates, parsedDates); 
                         
-                        // 🔥 엑셀 저장 시에도 과거 단포/단수 찌꺼기 완벽하게 합산하여 orig로 구축
                         const orig = mergeStockHistory(dbStock); 
                         Object.keys(orig).forEach(k=>{
                             nAS[k]=nAD.map(d=>{const oi=dbDates.indexOf(d);return oi!==-1?(orig[k]?.[oi]||0):0;});
@@ -791,7 +795,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v40)</span></h1>
+                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v41)</span></h1>
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                         {dbSync}
                     </span>
@@ -829,6 +833,7 @@ function App() {
                 </div>
             )}
 
+            {}
             {/* ─── 로켓배송 탭 ─── */}
             {view==="rocket"&&(
                 <main className="flex-grow w-full px-6 md:px-10 py-6 bg-slate-50 flex flex-col gap-6 animate-fade-in">
@@ -840,8 +845,15 @@ function App() {
                         </div>
                     ):(
                         <>
-                            <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-                                <h2 className="font-extrabold text-slate-800 text-xl px-2">🚀 로켓배송 실시간 상황판 <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품</span></h2>
+                            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+                                <h2 className="font-extrabold text-slate-800 text-xl px-2 whitespace-nowrap">🚀 로켓배송 실시간 상황판 <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품</span></h2>
+                                
+                                {/* 🔥 로켓배송 검색 입력창 추가 */}
+                                <div className="relative w-full xl:w-72 flex-shrink-0">
+                                    <input type="text" placeholder="상품명 또는 SKU ID 검색..." value={srch} onChange={e=>setSrch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/30"/>
+                                    <span className="absolute left-3.5 top-3 text-slate-400">🔍</span>
+                                </div>
+
                                 <div className="flex flex-wrap items-center gap-2">
                                     <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer select-none bg-slate-100 px-3 py-2 rounded-xl">
                                         <input type="checkbox" checked={rShowZero} onChange={e=>setRShowZero(e.target.checked)} className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5 cursor-pointer"/>
@@ -906,6 +918,7 @@ function App() {
                 </main>
             )}
 
+            {}
             {/* ─── N배송 (분석) 탭 ─── */}
             {view==="argo"&&(
                 <main className="flex-grow w-full px-6 md:px-10 py-6 space-y-6 animate-fade-in">
@@ -1011,6 +1024,7 @@ function App() {
                 </main>
             )}
 
+            {}
             {/* ── N배송 원본 탭 ── */}
             {view==="argo_raw"&&(
                 <main className="flex-grow w-full px-6 md:px-10 py-6 bg-slate-50 flex flex-col gap-6 animate-fade-in">
@@ -1022,8 +1036,15 @@ function App() {
                         </div>
                     ):(
                         <>
-                            <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-                                <h2 className="font-extrabold text-slate-800 text-xl px-2">📋 N배송 재고 <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">{filtARaw.length}개 상품 표시</span></h2>
+                            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+                                <h2 className="font-extrabold text-slate-800 text-xl px-2 whitespace-nowrap">📋 N배송 재고 <span className="ml-1 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">{filtARaw.length}개 상품 표시</span></h2>
+                                
+                                {/* 🔥 N배송 원본 탭 검색 입력창 추가 */}
+                                <div className="relative w-full xl:w-72 flex-shrink-0">
+                                    <input type="text" placeholder="품목명 검색..." value={srch} onChange={e=>setSrch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/30"/>
+                                    <span className="absolute left-3.5 top-3 text-slate-400">🔍</span>
+                                </div>
+
                                 <div className="flex flex-wrap items-center gap-2">
                                     <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer select-none bg-slate-100 px-3 py-2 rounded-xl">
                                         <input type="checkbox" checked={aRawShowZero} onChange={e=>setARawShowZero(e.target.checked)} className="rounded border-slate-300 text-emerald-600 w-3.5 h-3.5 cursor-pointer"/>
@@ -1084,6 +1105,7 @@ function App() {
                 </main>
             )}
 
+            {}
             {/* 공통 엑셀 업로드 */}
             <div className="px-6 md:px-10 pb-10 w-full mt-auto">
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
