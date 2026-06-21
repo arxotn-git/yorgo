@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 & N배송 재고 현황 (v41)</title>
+    <title>로켓배송 & N배송 재고 현황 (v42)</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const LS_KEY = "argo_dashboard_master_v41"; // 🔥 버전 v41 (캐시 리셋)
+const LS_KEY = "argo_dashboard_master_v42"; // 버전 v42로 업데이트
 
 const firebaseConfig = {
     apiKey: "AIzaSyBnrzPtihZDHw-CS43-9LtiLTQbcHViF90",
@@ -795,7 +795,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v41)</span></h1>
+                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v42)</span></h1>
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                         {dbSync}
                     </span>
@@ -993,7 +993,7 @@ function App() {
                                     <colgroup><col style={{width:"200px"}}/><col style={{width:"110px"}}/><col style={{width:"80px"}}/><col style={{width:"130px"}}/><col style={{width:"110px"}}/><col style={{width:"120px"}}/></colgroup>
                                     <thead className="freeze-header">
                                         <tr className="text-slate-500 text-xs font-extrabold uppercase tracking-wider border-b border-slate-200">
-                                            <th className="py-4 px-6 sticky left-0 top-0 bg-slate-100 z-[60] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300">SKU</th>
+                                            <th className="py-4 px-6 sticky left-0 top-0 bg-slate-100 !z-[60] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300">SKU</th>
                                             <th className="py-4 px-6 text-center z-[30]">현재고 ({aD.slice(5)})</th>
                                             <th className="py-4 px-6 text-center z-[30]">ADS</th>
                                             <th className="py-4 px-6 z-[30]">예상 품절일</th>
@@ -1073,7 +1073,7 @@ function App() {
                                         </colgroup>
                                         <thead className="freeze-header">
                                             <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
-                                                <th className="py-4 px-5 sticky left-0 z-50 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300">SKU</th>
+                                                <th className="py-4 px-5 sticky left-0 !z-50 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)] border-r border-slate-300">SKU</th>
                                                 {visAD.length===0&&<th className="py-4 px-5">해당 기간 데이터 없음</th>}
                                                 {visAD.map(d=><th key={d} className="py-4 px-4 text-center sticky top-0 z-20 bg-slate-100">{d.slice(5)}</th>)}
                                                 <th className="py-4 px-0 bg-slate-100 sticky top-0 z-20"></th>
