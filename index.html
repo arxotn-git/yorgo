@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 & N배송 재고 현황 (v44)</title>
+    <title>로켓배송 & N배송 재고 현황 (v48)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const LS_KEY = "argo_dashboard_master_v44"; // 버전 v44로 업데이트
+const APP_VERSION = 48; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
+const LS_KEY = `argo_dashboard_master_v${APP_VERSION}`;
 
 const firebaseConfig = {
     apiKey: "AIzaSyBnrzPtihZDHw-CS43-9LtiLTQbcHViF90",
@@ -150,6 +151,31 @@ const getGroup = sku => {
     return sku.split(' ')[0]; 
 };
 const CATS = new Proxy({}, { get: (target, prop) => getGroup(prop) });
+
+// 도서/완구 카테고리 색상 구분 (상품명 키워드 기반, 필요시 키워드 추가/수정)
+// 개별 상품명이 상위 키워드보다 우선 적용되어야 하는 예외 목록
+const CAT_OVERRIDES = [
+    {k:"플레이돌 맥스", cat:"toy"},
+    {k:"낱말카드", cat:"toy"},
+    {k:"매직패드", cat:"toy"},
+];
+const BOOK_KEYWORDS = ["멀티보드","플레이돌","와우펜북","빅북","사운드","차트","동화툰","그리고지우고"];
+const TOY_KEYWORDS  = ["키즈탭","클레이","마이크","와우펜","지우개"];
+const getBookToyCat = name => {
+    if(!name) return null;
+    const ov=CAT_OVERRIDES.find(o=>name.includes(o.k));
+    if(ov) return ov.cat;
+    if(BOOK_KEYWORDS.some(k=>name.includes(k))) return "book";
+    if(TOY_KEYWORDS.some(k=>name.includes(k))) return "toy";
+    return null;
+};
+
+// 매주 첫 영업일(직전 날짜와 1일 초과 차이나는 날짜=주말/휴일 이후 첫 날) 색상 구분용
+const isWeekStartDate = (dates, i) => {
+    if(i<=0) return false;
+    const diffDays = Math.round((new Date(dates[i]) - new Date(dates[i-1])) / 86400000);
+    return diffDays > 1;
+};
 
 const INIT_INC = [
     {sku:"안심클레이 10종팩",date:"2026-05-14",amount:120,type:"택배",isRegistered:true},
@@ -278,6 +304,10 @@ function App() {
     const [dbSync, setDbSync] = useState("🔄 연결 중...");
     const [loggedIn, setLoggedIn]=useState(()=>{try{return sessionStorage.getItem("ili")==="1";}catch(e){return false;}});
     const [pwd,setPwd]=useState(""); const [pwdErr,setPwdErr]=useState(false);
+
+    // 현재 연/월 (드롭다운·모드 기본값에 공통으로 사용)
+    const CUR_Y=useMemo(()=>String(new Date().getFullYear()),[]);
+    const CUR_M=useMemo(()=>String(new Date().getMonth()+1).padStart(2,'0'),[]);
     
     const [view,setView]=useState(()=>{try{return sessionStorage.getItem("activeTab")||"rocket";}catch(e){return "rocket";}});
     const changeView=v=>{setView(v);try{sessionStorage.setItem("activeTab",v);}catch(e){}};
@@ -340,7 +370,7 @@ function App() {
     };
 
     // ── N배송 분석 탭 필터 ──
-    const aYears=useMemo(()=>dbDates.length?[...new Set(dbDates.map(d=>d.slice(0,4)))].sort().reverse():["2026"],[dbDates]);
+    const aYears=useMemo(()=>dbDates.length?[...new Set(dbDates.map(d=>d.slice(0,4)))].sort().reverse():[CUR_Y],[dbDates,CUR_Y]);
     const [aY,setAY]=useState(()=>aYears[0]||"2026");
     const aMons=useMemo(()=>dbDates.length?[...new Set(dbDates.filter(d=>d.startsWith(aY)).map(d=>d.slice(5,7)))].sort().reverse():["06"],[dbDates,aY]);
     const [aM,setAM]=useState(()=>aMons[0]||"06");
@@ -362,12 +392,12 @@ function App() {
     },[dbDates]);
 
     // ── 로켓 필터 ──
-    const [rMode,setRMode]=useState("10"); 
+    const [rMode,setRMode]=useState("THIS"); 
     const [rShowZero,setRShowZero]=useState(false); 
-    const rYears=useMemo(()=>rDates.length?[...new Set(rDates.map(d=>d.slice(0,4)))].sort().reverse():["2026"],[rDates]);
-    const [rY,setRY]=useState(()=>rYears[0]||"2026");
-    const rMons=useMemo(()=>rDates.length?[...new Set(rDates.filter(d=>d.startsWith(rY)).map(d=>d.slice(5,7)))].sort().reverse():["06"],[rDates,rY]);
-    const [rM,setRM]=useState(()=>rMons[0]||"06");
+    const rYears=useMemo(()=>rDates.length?[...new Set(rDates.map(d=>d.slice(0,4)))].sort().reverse():[CUR_Y],[rDates,CUR_Y]);
+    const [rY,setRY]=useState(()=>rYears[0]||CUR_Y);
+    const rMons=useMemo(()=>rDates.length?[...new Set(rDates.filter(d=>d.startsWith(rY)).map(d=>d.slice(5,7)))].sort().reverse():[CUR_M],[rDates,rY,CUR_M]);
+    const [rM,setRM]=useState(()=>rMons[0]||CUR_M);
     useEffect(()=>{if(!rYears.includes(rY))setRY(rYears[0]);},[rYears]);
     useEffect(()=>{if(!rMons.includes(rM))setRM(rMons[0]);},[rY,rMons]);
 
@@ -408,13 +438,13 @@ function App() {
     },[rItems,rDates,rShowZero,srch]);
 
     // ── N배송 원본 필터 ──
-    const [aRawMode,setARawMode]=useState("10"); 
+    const [aRawMode,setARawMode]=useState("THIS"); 
     const [aRawShowZero,setARawShowZero]=useState(false);
-    const [aRawY,setARawY]=useState(()=>aYears[0]||"2026");
-    const aRawMons=useMemo(()=>dbDates.length?[...new Set(dbDates.filter(d=>d.startsWith(aRawY)).map(d=>d.slice(5,7)))].sort().reverse():["06"],[dbDates,aRawY]);
-    const [aRawM,setARawM]=useState(()=>aRawMons[0]||"06");
-    useEffect(()=>{if(!aYears.includes(aRawY))setARawY(aYears[0]||"2026");},[aYears]);
-    useEffect(()=>{if(!aRawMons.includes(aRawM))setARawM(aRawMons[0]||"06");},[aRawY,aRawMons]);
+    const [aRawY,setARawY]=useState(()=>aYears[0]||CUR_Y);
+    const aRawMons=useMemo(()=>dbDates.length?[...new Set(dbDates.filter(d=>d.startsWith(aRawY)).map(d=>d.slice(5,7)))].sort().reverse():[CUR_M],[dbDates,aRawY,CUR_M]);
+    const [aRawM,setARawM]=useState(()=>aRawMons[0]||CUR_M);
+    useEffect(()=>{if(!aYears.includes(aRawY))setARawY(aYears[0]||CUR_Y);},[aYears]);
+    useEffect(()=>{if(!aRawMons.includes(aRawM))setARawM(aRawMons[0]||CUR_M);},[aRawY,aRawMons]);
 
     const visAD=useMemo(()=>{
         if(!dbDates.length)return[];
@@ -806,7 +836,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v44)</span></h1>
+                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1>
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("완료") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                         {dbSync}
                     </span>
@@ -899,25 +929,30 @@ function App() {
                                             <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
                                                 <th className="py-3 px-5 fc1 bg-slate-100">상품명</th><th className="py-3 px-5 fc2 bg-slate-100">구성</th><th className="py-3 px-5 fc3 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)]">SKU ID</th>
                                                 {visRD.length===0&&<th className="py-3 px-5">해당 기간 데이터 없음</th>}
-                                                {visRD.map(d=><th key={d} className="py-3 px-4 text-center sticky top-0 z-20 bg-slate-100">{d.slice(5)}</th>)}
+                                                {visRD.map((d,i)=><th key={d} className={`py-3 px-4 text-center sticky top-0 z-20 ${isWeekStartDate(visRD,i)?"bg-orange-100 text-orange-700":"bg-slate-100"}`}>{d.slice(5)}</th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="text-sm">
                                             {filtRI.map((item,idx)=>{
                                                 const isNew=idx>0&&filtRI[idx-1].name!==item.name;
                                                 const rowCls=`hover:bg-blue-50/40 transition-colors ${isNew?"border-t-[3px] border-blue-500":"border-t border-slate-100"}`;
-                                                const bgNew=isNew?"bg-[#eff6ff]":"bg-white";
-                                                const txtNew=isNew?"text-blue-900":"text-slate-800";
+                                                const bgNew="bg-white";
+                                                const txtNew="text-slate-800";
+                                                const cat=getBookToyCat(item.name);
+                                                const nameBg=cat==="book"?"bg-emerald-50":cat==="toy"?"bg-orange-50":bgNew;
+                                                const nameTxt=cat==="book"?"text-emerald-900":cat==="toy"?"text-orange-900":txtNew;
+                                                const nameBorder=cat==="book"?"border-l-4 border-emerald-400":cat==="toy"?"border-l-4 border-orange-400":"border-l-4 border-transparent";
                                                 return(
                                                     <tr key={idx} className={rowCls}>
-                                                        <td className={`py-4 px-5 font-extrabold fc1 whitespace-nowrap overflow-hidden text-ellipsis ${bgNew} ${txtNew}`}>{item.name}</td>
+                                                        <td className={`py-4 px-5 font-extrabold fc1 whitespace-nowrap overflow-hidden text-ellipsis ${nameBg} ${nameTxt} ${nameBorder}`}>{item.name}</td>
                                                         <td className={`py-4 px-5 text-slate-500 fc2 whitespace-nowrap overflow-hidden text-ellipsis ${bgNew}`}>{item.option||"-"}</td>
                                                         <td className={`py-4 px-5 font-mono text-slate-400 text-xs fc3 whitespace-nowrap ${bgNew}`}>{item.skuId||"-"}</td>
                                                         {visRD.length===0&&<td className={bgNew}></td>}
                                                         {visRD.map((d,i)=>{
                                                             const v=item.history[d];const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
+                                                            const wkStart=isWeekStartDate(visRD,i);
                                                             return(
-                                                                <td key={i} className={`py-4 px-4 text-center font-bold ${bgNew} ${num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
+                                                                <td key={i} className={`py-4 px-4 text-center font-bold ${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
                                                                     {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
                                                                 </td>
                                                             );
