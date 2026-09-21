@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 & N배송 재고 현황 (v56)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 & N배송 재고 현황 (v57)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 56; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
+const APP_VERSION = 57; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
 const LS_KEY = `argo_dashboard_master_v${APP_VERSION}`;
 
 const firebaseConfig = {
@@ -782,18 +782,20 @@ function App() {
                             return {...it, history:h};
                         });
                     }
+                    // 화면은 로컬 파싱 결과로 즉시 갱신하고, 클라우드 저장은 백그라운드에서 진행 (체감 속도 개선)
+                    setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);setAOrder(nAOrder);
+                    if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
+                    if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
+                    notify("엑셀 분석 완료! 클라우드 저장 중...");
                     setDbSync("⏳ 저장 중...");
                     db.doc(`yomimon_dashboard/inventory_master`).set({
                         DATES: nAD, STOCK: nAS, INC: nInc, RD: nRD, RI: nRI, AORDER: nAOrder,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                     }).then(() => {
-                        setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);setAOrder(nAOrder);
-                        if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
-                        if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
-                        notify("엑셀 데이터 클라우드 전송 및 동기화 완료!");
+                        notify("☁️ 클라우드 동기화 완료!");
                     }).catch(e => {
                         console.error("Firestore 저장 실패:", e);
-                        notify(`클라우드 저장 실패: ${e.code||""} ${e.message||e}`, "err");
+                        notify(`⚠️ 화면엔 반영됐지만 클라우드 저장은 실패했어요: ${e.code||""} ${e.message||e}`, "err");
                     });
                 } else {
                     setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);setAOrder(nAOrder);
