@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 & N배송 재고 현황 (v55)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 & N배송 재고 현황 (v56)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 55; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
+const APP_VERSION = 56; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
 const LS_KEY = `argo_dashboard_master_v${APP_VERSION}`;
 
 const firebaseConfig = {
@@ -176,6 +176,10 @@ const isWeekStartDate = (dates, i) => {
     const diffDays = Math.round((new Date(dates[i]) - new Date(dates[i-1])) / 86400000);
     return diffDays > 1;
 };
+
+// Firestore 문서는 1MB 제한이 있음 - 날짜 이력이 계속 누적되면 업로드가 느려지다가 결국 실패함.
+// 최근 N일치 이력만 유지하도록 오래된 날짜 컬럼을 정리한다.
+const MAX_HISTORY_DAYS = 120;
 
 const INIT_INC = [
     {sku:"안심클레이 10종팩",date:"2026-05-14",amount:120,type:"택배",isRegistered:true},
@@ -763,6 +767,21 @@ function App() {
                 }
 
                 if(useFirebase) {
+                    // 오래된 날짜 이력 정리 (Firestore 1MB 문서 용량 제한 대응)
+                    if(nAD.length > MAX_HISTORY_DAYS){
+                        const keepDates = nAD.slice(nAD.length - MAX_HISTORY_DAYS);
+                        const idxMap = keepDates.map(d=>nAD.indexOf(d));
+                        Object.keys(nAS).forEach(sku=>{ nAS[sku] = idxMap.map(i=>nAS[sku][i]||0); });
+                        nAD = keepDates;
+                    }
+                    if(nRD.length > MAX_HISTORY_DAYS){
+                        const keepSet = new Set(nRD.slice(nRD.length - MAX_HISTORY_DAYS));
+                        nRD = nRD.filter(d=>keepSet.has(d));
+                        nRI = nRI.map(it=>{
+                            const h={}; Object.keys(it.history).forEach(d=>{ if(keepSet.has(d)) h[d]=it.history[d]; });
+                            return {...it, history:h};
+                        });
+                    }
                     setDbSync("⏳ 저장 중...");
                     db.doc(`yomimon_dashboard/inventory_master`).set({
                         DATES: nAD, STOCK: nAS, INC: nInc, RD: nRD, RI: nRI, AORDER: nAOrder,
@@ -773,7 +792,8 @@ function App() {
                         if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
                         notify("엑셀 데이터 클라우드 전송 및 동기화 완료!");
                     }).catch(e => {
-                        notify("클라우드 저장 실패", "err");
+                        console.error("Firestore 저장 실패:", e);
+                        notify(`클라우드 저장 실패: ${e.code||""} ${e.message||e}`, "err");
                     });
                 } else {
                     setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);setAOrder(nAOrder);
@@ -783,7 +803,7 @@ function App() {
                     notify("엑셀 분석 완료 (오프라인 임시저장)");
                 }
 
-            }catch(err){console.error(err);notify("엑셀 파싱 오류.","err");}
+            }catch(err){console.error(err);notify(`엑셀 파싱 오류: ${err.message||err}`,"err");}
         };
         reader.readAsBinaryString(file);
     };
