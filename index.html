@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 & N배송 재고 현황 (v57)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 & N배송 재고 현황 (v58)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 57; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
+const APP_VERSION = 58; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
 const LS_KEY = `argo_dashboard_master_v${APP_VERSION}`;
 
 const firebaseConfig = {
@@ -401,7 +401,7 @@ function App() {
     },[dbDates]);
 
     // ── 로켓 필터 ──
-    const [rMode,setRMode]=useState("THIS"); 
+    const [rMode,setRMode]=useState("15"); 
     const [rShowZero,setRShowZero]=useState(false); 
     const rYears=useMemo(()=>rDates.length?[...new Set(rDates.map(d=>d.slice(0,4)))].sort().reverse():[CUR_Y],[rDates,CUR_Y]);
     const [rY,setRY]=useState(()=>rYears[0]||CUR_Y);
@@ -863,7 +863,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 className="text-2xl font-bold">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1>
+                    <h1 onClick={()=>window.location.reload()} title="클릭하면 새로고침" className="text-2xl font-bold cursor-pointer select-none">로켓배송 & N배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1>
                     <div className="flex items-center gap-2">
                         <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("연동") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                             {dbSync}
@@ -921,28 +921,27 @@ function App() {
                         </div>
                     ):(
                         <>
-                            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-                                <div className="flex flex-col gap-1">
-                                    <h2 className="font-extrabold text-slate-800 text-xl px-2 whitespace-nowrap flex items-center gap-2">🚀 로켓배송 실시간 상황판 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품</span></h2>
-                                    <span className="font-bold px-2" style={{fontSize:"12px"}}><span className="invisible" style={{fontSize:"1.25rem"}}>🚀 </span><span className="text-emerald-600">도서 : 그린</span> / <span className="text-orange-500">완구 : 오렌지</span></span>
-                                </div>
-                                
-                                {/* 🔥 로켓배송 검색 입력창 추가 */}
-                                <div className="relative w-full xl:w-72 flex-shrink-0">
-                                    <input type="text" placeholder="상품명 또는 SKU ID 검색..." value={srch} onChange={e=>setSrch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/30"/>
-                                    <span className="absolute left-3.5 top-3 text-slate-400">🔍</span>
-                                </div>
+                            <div className="flex flex-col xl:flex-row xl:items-center gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+                                <h2 className="font-extrabold text-slate-800 text-xl px-2 whitespace-nowrap flex items-center gap-2 flex-shrink-0">🚀 로켓배송 실시간 상황판 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품</span><span className="font-bold whitespace-nowrap" style={{fontSize:"12px"}}><span className="text-emerald-600">도서 : 그린</span> / <span className="text-orange-500">완구 : 오렌지</span></span></h2>
 
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer select-none bg-slate-100 px-3 py-2 rounded-xl">
-                                        <input type="checkbox" checked={rShowZero} onChange={e=>setRShowZero(e.target.checked)} className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5 cursor-pointer"/>
-                                        <span>재고 0개도 보기</span>
-                                    </label>
-                                    <ModeBtns mode={rMode} setMode={setRMode} color="blue"/>
-                                    <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
-                                        <Dropdown value={rY} options={rYears.map(y=>({value:y,label:`${y}년`}))} onChange={v=>{setRY(v);setRMode("MONTH");}}/>
-                                        <div className="w-px h-6 bg-slate-700"/>
-                                        <Dropdown value={rM} options={rMons.map(m=>({value:m,label:`${m}월`}))} onChange={v=>{setRM(v);setRMode("MONTH");}}/>
+                                <div className="flex flex-col xl:flex-row xl:items-center gap-2 flex-1 min-w-0">
+                                    {/* 검색 입력창: 남은 가로 공간만큼 확장 */}
+                                    <div className="relative flex-1 min-w-[160px]">
+                                        <input type="text" placeholder="상품명 또는 SKU ID 검색..." value={srch} onChange={e=>setSrch(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/30"/>
+                                        <span className="absolute left-3.5 top-3 text-slate-400">🔍</span>
+                                    </div>
+
+                                    <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                                        <label className="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer select-none bg-slate-100 px-3 py-2 rounded-xl">
+                                            <input type="checkbox" checked={rShowZero} onChange={e=>setRShowZero(e.target.checked)} className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5 cursor-pointer"/>
+                                            <span>재고 0개도 보기</span>
+                                        </label>
+                                        <ModeBtns mode={rMode} setMode={setRMode} color="blue"/>
+                                        <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
+                                            <Dropdown value={rY} options={rYears.map(y=>({value:y,label:`${y}년`}))} onChange={v=>{setRY(v);setRMode("MONTH");}}/>
+                                            <div className="w-px h-6 bg-slate-700"/>
+                                            <Dropdown value={rM} options={rMons.map(m=>({value:m,label:`${m}월`}))} onChange={v=>{setRM(v);setRMode("MONTH");}}/>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
