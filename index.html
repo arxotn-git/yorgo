@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v62)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v63)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -24,6 +24,7 @@
 
     <!-- SheetJS (Excel Parser) CDN -->
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
     <!-- Firebase SDK Compat -->
     <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
@@ -67,7 +68,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 62; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
+const APP_VERSION = 63; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
 const LS_KEY = `argo_dashboard_master_v${APP_VERSION}`;
 
 const firebaseConfig = {
@@ -289,6 +290,99 @@ const parseSheetWithTimeline = (sheet, skipCols=0) => {
     return { rows, hri, dCols, parsedDates: dCols.map(c=>c.label) };
 };
 
+// Spreadsheet appearance is authoritative; defaults apply only before an Excel import.
+const excelItemKey=(name,option)=>JSON.stringify([String(name||'').trim(),String(option||'').trim()]);
+const sortInventoryDates=dates=>[...new Set(dates)].sort((a,b)=>a.slice(0,10).localeCompare(b.slice(0,10)) || (Number(a.match(/\((\d+)\)/)?.[1]||1)-Number(b.match(/\((\d+)\)/)?.[1]||1)));
+const itemCellStyle=(item,index,date)=>date?(item.excelDateStyles?.[date]||{}):(item.excelStyles?.[index]||{});
+const defaultNameStyle=item=>{
+    const cat=getBookToyCat(item.name);
+    return {backgroundColor:cat==='book'?'#ECFDF5':cat==='toy'?'#FFF7ED':'#FFFFFF',color:cat==='book'?'#064E3B':cat==='toy'?'#7C2D12':'#1E293B'};
+};
+const readExcelTheme=workbook=>{
+    const colors=['FFFFFF','000000','E7E6E6','44546A','4472C4','ED7D31','A5A5A5','FFC000','5B9BD5','70AD47','0563C1','954F72'];
+    const xml=workbook?._themes?.theme1;
+    if(typeof xml==='string'){
+        const doc=new DOMParser().parseFromString(xml,'application/xml');
+        ['lt1','dk1','lt2','dk2','accent1','accent2','accent3','accent4','accent5','accent6','hlink','folHlink'].forEach((tag,i)=>{
+            const el=doc.getElementsByTagNameNS('*',tag)[0]?.firstElementChild;
+            const value=el?.getAttribute('lastClr')||el?.getAttribute('val');
+            if(/^[0-9A-Fa-f]{6}$/.test(value||''))colors[i]=value;
+        });
+    }
+    return colors;
+};
+const excelColor=(color,theme,fallback)=>{
+    if(!color)return fallback;
+    const indexed=['000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','800000','008000','000080','808000','800080','008080','C0C0C0','808080','9999FF','993366','FFFFCC','CCFFFF','660066','FF8080','0066CC','CCCCFF','000080','FF00FF','FFFF00','00FFFF','800080','800000','008080','0000FF','00CCFF','CCFFFF','CCFFCC','FFFF99','99CCFF','FF99CC','CC99FF','FFCC99','3366FF','33CCCC','99CC00','FFCC00','FF9900','FF6600','666699','969696','003366','339966','003300','333300','993300','993366','333399','333333'];
+    let hex=color.argb?.slice(-6)||(color.theme!=null?theme[color.theme]:null)||(color.indexed!=null?indexed[color.indexed]:null);
+    if(!/^[0-9A-Fa-f]{6}$/.test(hex||''))return fallback;
+    const tint=Number(color.tint||0);
+    if(tint)hex=hex.match(/../g).map(x=>{let n=parseInt(x,16);n=tint<0?n*(1+tint):n+(255-n)*tint;return Math.min(255,Math.max(0,Math.round(n))).toString(16).padStart(2,'0');}).join('');
+    return '#'+hex.toUpperCase();
+};
+const readCellAppearance=(cell,theme)=>{
+    const style={backgroundColor:'#FFFFFF',color:'#000000'};
+    if(cell?.fill?.type==='pattern'&&cell.fill.pattern==='solid')style.backgroundColor=excelColor(cell.fill.fgColor,theme,'#FFFFFF');
+    const color=excelColor(cell?.font?.color,theme,null);
+    if(color)style.color=color;
+    return style;
+};
+const importRocketSheet=(sheet,styledSheet,theme,existingItems,existingDates)=>{
+    const p=parseSheetWithTimeline(sheet,3);
+    if(!p?.dCols.length)throw new Error('로켓배송 시트에서 날짜 열을 찾지 못했습니다. 상품명 / 구성 / SKU ID 다음에 날짜 열이 있어야 합니다.');
+    if(new Set(p.parsedDates).size!==p.parsedDates.length)throw new Error('로켓배송 시트의 날짜 열이 중복됩니다. (2), (3)처럼 구분해주세요.');
+    const oldMap=new Map(existingItems.map(x=>[excelItemKey(x.name,x.option),x]));
+    const seen=new Set(),items=[];
+    const startRow=sheet['!ref']?XLSX.utils.decode_range(sheet['!ref']).s.r:0;
+    for(let i=p.hri+1;i<p.rows.length;i++){
+        const row=p.rows[i];if(!row?.length)continue;
+        const cellValue=c=>{const v=styledSheet?.getCell(startRow+i+1,c+1)?.value;return v&&typeof v==='object'?(v.richText?v.richText.map(r=>r.text).join(''):v.result??''):v;};
+        const name=String(row[0]||cellValue(0)||'').trim(),option=String(row[1]||cellValue(1)||'').trim(),skuId=String(row[2]??'').trim();
+        if(!name||name==='undefined')continue;
+        const key=excelItemKey(name,option);if(seen.has(key))throw new Error('엑셀 상품 중복: '+name+' / '+option);seen.add(key);
+        const previous=oldMap.get(key)||{};
+        const item={...previous,name,option,skuId,excelActive:true,history:{...(previous.history||{})},excelDateStyles:{...(previous.excelDateStyles||{})}};
+        item.excelStyles=[0,1,2].map(c=>readCellAppearance(styledSheet?.getCell(startRow+i+1,c+1),theme));
+        p.dCols.forEach((col,ci)=>{
+            const raw=row[col.index];let value='-';
+            if(raw!==''&&raw!=null){const numeric=typeof raw==='number'?raw:Number(String(raw).replace(/,/g,''));value=Number.isFinite(numeric)?Math.round(numeric):String(raw);}
+            const date=p.parsedDates[ci];item.history[date]=value;
+            const style=readCellAppearance(styledSheet?.getCell(startRow+i+1,col.index+1),theme);
+            // Store only explicit fills on history cells to keep the shared document compact.
+            if(style.backgroundColor!=='#FFFFFF')item.excelDateStyles[date]={backgroundColor:style.backgroundColor};else delete item.excelDateStyles[date];
+        });
+        if(!Object.keys(item.excelDateStyles).length)delete item.excelDateStyles;
+        items.push(item);
+    }
+    if(!items.length)throw new Error('엑셀에 로켓배송 상품이 없습니다. 저장하지 않았습니다.');
+    // Omitted products retain their history but never reappear during stock collection.
+    existingItems.forEach(x=>{if(!seen.has(excelItemKey(x.name,x.option)))items.push({...x,excelActive:false});});
+    return {items,dates:sortInventoryDates([...existingDates,...p.parsedDates])};
+};
+const buildInventoryWorkbook=async data=>{
+    if(typeof ExcelJS==='undefined')throw new Error('엑셀 기능을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
+    const wb=new ExcelJS.Workbook();wb.creator='Yorgo';wb.created=new Date();
+    const applyStyle=(cell,style)=>{
+        const bg=style?.backgroundColor;if(/^#[0-9A-F]{6}$/i.test(bg||''))cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+bg.slice(1)}};
+        const color=style?.color;cell.font={name:'맑은 고딕',size:10,...(/^#[0-9A-F]{6}$/i.test(color||'')?{color:{argb:'FF'+color.slice(1)}}:{})};
+    };
+    const setup=(sheet,widths,frozen)=>{sheet.columns=widths.map(width=>({width}));sheet.views=[{state:'frozen',xSplit:frozen,ySplit:1}];sheet.getRow(1).height=25;sheet.getRow(1).eachCell(cell=>{cell.font={name:'맑은 고딕',size:10,bold:true,color:{argb:'FFFFFFFF'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF334155'}};});sheet.autoFilter={from:{row:1,column:1},to:{row:1,column:sheet.columnCount}};};
+    const rocket=wb.addWorksheet('로켓배송');const dates=data.RD||[];
+    rocket.addRow(['상품명','구성','SKU ID',...dates]);
+    (data.RI||[]).filter(item=>item.excelActive!==false).forEach(item=>{
+        const row=rocket.addRow([item.name,item.option||'',String(item.skuId||''),...dates.map(d=>item.history?.[d]??'-')]);
+        row.height=22;
+        row.eachCell({includeEmpty:true},(cell,c)=>{const style=c<=3?(item.excelStyles?.[c-1]||(c===1?defaultNameStyle(item):{backgroundColor:'#FFFFFF'})):itemCellStyle(item,0,dates[c-4]);applyStyle(cell,style);if(c>=4&&typeof cell.value==='number')cell.numFmt='#,##0';});
+        row.getCell(3).numFmt='@';
+    });setup(rocket,[26,22,18,...dates.map(()=>15)],3);
+    const argo=wb.addWorksheet('N배송');const ad=data.DATES||[],stock=data.STOCK||{};
+    argo.addRow(['상품명','구성','SKU ID',...ad]);
+    [...new Set([...(data.AORDER||[]),...Object.keys(stock)])].filter(k=>stock[k]).forEach(k=>argo.addRow([k,'','',...ad.map((_,i)=>stock[k]?.[i]??0)]));setup(argo,[30,18,18,...ad.map(()=>15)],3);
+    const shipping=wb.addWorksheet('출고 기록');shipping.addRow(['상품명','출고일','수량','운송방식','입고완료','추가정보(JSON)']);
+    (data.INC||[]).forEach(x=>{const {sku,date,amount,type,isRegistered,...extra}=x;shipping.addRow([sku,date,amount,type,isRegistered?'완료':'대기',Object.keys(extra).length?JSON.stringify(extra):'']);});setup(shipping,[30,18,12,14,14,40],1);
+    return wb;
+};
+
 function Dropdown({label,value,options,onChange}) {
     const [open,setOpen]=useState(false);
     const ref=useRef(null);
@@ -324,7 +418,9 @@ function Dropdown({label,value,options,onChange}) {
 
 function App() {
     const [dbSync, setDbSync] = useState("🔄 연결 중...");
-    const [lastSyncedAt, setLastSyncedAt] = useState(null); // 🔥 최종 업데이트 일시 (Firestore updatedAt)
+    const [lastSyncedAt, setLastSyncedAt] = useState(null);
+    const [excelBusy,setExcelBusy]=useState(false);
+    const excelBusyRef=useRef(false); // 🔥 최종 업데이트 일시 (Firestore updatedAt)
     const fmtSyncTime = d => { if(!d) return ""; const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
     // 🔒 로그인 유지: 하루(달력일) 단위로 유지. 탭만 닫았다가 다시 열어도(브라우저 자체를 끄지 않는 한) 같은 날이면 비밀번호 재입력 없이 통과.
     const getTodayKey=()=>{const d=new Date();return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;};
@@ -361,6 +457,7 @@ function App() {
                 if(d.RD)setRDates(d.RD);
                 if(d.RI)setRItems(d.RI);
                 if(d.AORDER)setAOrder(d.AORDER);
+                const cachedTime=d.rocketUpdatedAt||d.updatedAt;if(cachedTime){const sec=cachedTime.seconds??cachedTime._seconds;const date=sec?new Date(sec*1000):new Date(cachedTime);if(!isNaN(date.getTime()))setLastSyncedAt(date);}
             }
         }catch(e){}
 
@@ -377,7 +474,7 @@ function App() {
                 if (d.RD) setRDates(d.RD);
                 if (d.RI) setRItems(d.RI);
                 if (d.AORDER?.length) setAOrder(d.AORDER);
-                if (d.updatedAt) { try{ setLastSyncedAt(d.updatedAt.toDate()); }catch(e){} }
+                const savedTime=d.rocketUpdatedAt||d.updatedAt; if(savedTime){try{setLastSyncedAt(savedTime.toDate());}catch(e){}}
                 
                 setDbSync("☁️ 실시간 연동 중");
                 try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch(e) {}
@@ -454,6 +551,7 @@ function App() {
 
     const filtRI=useMemo(()=>{
         return rItems.filter(item=>{
+            if(item.excelActive===false)return false;
             if(srch){
                 const term = srch.toLowerCase();
                 const mName = String(item.name || "").toLowerCase().includes(term);
@@ -665,7 +763,7 @@ function App() {
     const stockQuery = q => ({'와우펜북':'와우펜','키즈탭 프로':'키즈탭','동화툰 패키지':'동화툰','보드마카+지우개':'지우개'}[q.name]||q.name);
     const inventoryQueries = () => {
         const latest=rDates[rDates.length-1];const map=new Map(STOCK_MAPPING.map(m=>[stockKey(m.name,m.option),m]));const seen=new Set(),queries=[],problems=[];
-        const tracked=rItems.filter(item=>isStockNumber(item.history?.[latest]));
+        const tracked=rItems.filter(item=>item.excelActive!==false&&isStockNumber(item.history?.[latest]));
         tracked.forEach(item=>{const key=stockKey(item.name,item.option);if(seen.has(key)){problems.push('중복 상품: '+item.name+' / '+item.option);return;}seen.add(key);const m=map.get(key);if(!m)problems.push('상품 연결 확인 필요: '+item.name+' / '+item.option);else queries.push({...m,skuId:String(item.skuId||'')});});
         if(new Set(STOCK_MAPPING.map(m=>stockKey(m.name,m.option))).size!==STOCK_MAPPING.length)problems.push('내장 상품 목록 중복');
         return {latest,tracked,queries,problems};
@@ -678,15 +776,15 @@ function App() {
         const ref=db.doc('yomimon_dashboard/inventory_master');
         return db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw new Error('클라우드 원본을 찾지 못했습니다.');const d=snap.data();if(!Array.isArray(d.RD)||!Array.isArray(d.RI))throw new Error('원본 구조가 달라 저장하지 않았습니다.');
             const today=todayKst(),rd=[...d.RD];if(rd.some(x=>String(x).slice(0,10)>today))throw new Error('원본 날짜가 오늘보다 미래입니다. 날짜를 확인해주세요.');
-            const latest=rd[rd.length-1],active=d.RI.filter(x=>isStockNumber(x.history?.[latest]));if(active.length!==queries.length)throw new Error('조회 중 상품 목록이 변경됐습니다. 새로고침 후 재시도하세요.');
+            const latest=rd[rd.length-1],active=d.RI.filter(x=>x.excelActive!==false&&isStockNumber(x.history?.[latest]));if(active.length!==queries.length)throw new Error('조회 중 상품 목록이 변경됐습니다. 새로고침 후 재시도하세요.');
             const keys=new Set();active.forEach(x=>{const key=stockKey(x.name,x.option);if(keys.has(key)||!values.has(key))throw new Error('상품 목록이 변경되어 저장을 중단했습니다.');keys.add(key);const q=queries.find(q=>stockKey(q.name,q.option)===key);if(String(x.skuId||'')!==q.skuId)throw new Error('SKU가 변경됐습니다. 새로고침 후 확인해주세요.');});
             const runDate=nextRunDate(rd,today);const ri=d.RI.map(x=>({...x,history:{...(x.history||{}),[runDate]:values.has(stockKey(x.name,x.option))?values.get(stockKey(x.name,x.option)):'-'}}));
             const candidate={...d,RD:[...rd,runDate],RI:ri};if(new Blob([JSON.stringify(candidate)]).size>950000)throw new Error('클라우드 문서 용량이 커서 저장하지 않았습니다. 기록 분리 보관이 필요합니다.');
-            tx.update(ref,{RD:candidate.RD,RI:ri,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});return runDate;});
+            tx.update(ref,{RD:candidate.RD,RI:ri,updatedAt:firebase.firestore.FieldValue.serverTimestamp(),rocketUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()});return runDate;});
     };
     const handleStockFetch = async (automatic=false) => {
         automatic=automatic===true;
-        if(stockBusyRef.current)return;stockBusyRef.current=true;
+        if(stockBusyRef.current||excelBusyRef.current)return;stockBusyRef.current=true;
         try{
             if(!useFirebase)throw new Error('클라우드 연결이 없어 저장하지 않았습니다.');const check=inventoryQueries();
             if(!check.latest||!check.tracked.length||check.problems.length)throw new Error(check.problems.join(', ')||'조회할 숫자 재고 상품이 없습니다.');
@@ -715,62 +813,43 @@ function App() {
         } catch(e) { alert('원본 다운로드 실패: '+String(e.message||e)); }
     };
 
+    const handleExcelDownload=async()=>{
+        if(excelBusyRef.current)return;excelBusyRef.current=true;setExcelBusy(true);
+        try{
+            let data={RD:rDates,RI:rItems,DATES:dbDates,STOCK:dbStock,INC:dbInc,AORDER:aOrder};
+            if(useFirebase){const snap=await db.doc('yomimon_dashboard/inventory_master').get({source:'server'});if(!snap.exists)throw new Error('클라우드 원본이 없습니다.');data=snap.data();}
+            const workbook=await buildInventoryWorkbook(data),buffer=await workbook.xlsx.writeBuffer();
+            const url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const link=document.createElement('a');link.href=url;link.download='Yorgo_통합재고_'+todayKst()+'.xlsx';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+            notify('전체 날짜·상품 순서·색상을 포함한 엑셀을 다운로드했습니다.');
+        }catch(error){notify('엑셀 다운로드 실패: '+error.message,'err');}finally{excelBusyRef.current=false;setExcelBusy(false);}
+    };
     const handleUpload=e=>{
         const file=e.target.files[0]; if(!file)return;
+        if(excelBusyRef.current||stockBusyRef.current){notify("진행 중인 작업이 끝난 뒤 업로드해주세요.","err");return;}
+        if(!/\.xlsx$/i.test(file.name)){notify("색상과 순서 보존을 위해 .xlsx 형식으로 저장해서 올려주세요.","err");return;}
+        excelBusyRef.current=true;setExcelBusy(true);
         const reader=new FileReader();
-        reader.onload=ev=>{
+        reader.onload=async ev=>{
             try{
-                const wb=XLSX.read(ev.target.result,{type:'binary',cellDates:true});
+                if(typeof ExcelJS==='undefined')throw new Error('엑셀 기능을 불러오지 못했습니다. 새로고침해주세요.');
+                const styledBook=new ExcelJS.Workbook();await styledBook.xlsx.load(ev.target.result);
+                const theme=readExcelTheme(styledBook);
+                let source={RD:rDates,RI:rItems,DATES:dbDates,STOCK:dbStock,INC:dbInc,AORDER:aOrder};
+                if(useFirebase){const snap=await db.doc('yomimon_dashboard/inventory_master').get({source:'server'});if(!snap.exists)throw new Error('클라우드 원본을 찾지 못했습니다.');source=snap.data();}
+                const baseRD=source.RD||[],baseRI=source.RI||[],baseAD=source.DATES||[],baseAS=source.STOCK||{},baseInc=source.INC||[],baseOrder=source.AORDER||[];
+                const wb=XLSX.read(ev.target.result,{type:'array',cellDates:true,cellStyles:true});
                 const sn=wb.SheetNames;
                 const sRocket=sn[0]?wb.Sheets[sn[0]]:null;
                 const sArgo  =sn[1]?wb.Sheets[sn[1]]:null;
                 const sDisp  =sn[2]?wb.Sheets[sn[2]]:null;
 
-                let nRD=[...rDates],nRI=[...rItems];
-                let nAD=[...dbDates],nAS={...dbStock};
-                let nInc=[...dbInc];
-                let nAOrder=[...aOrder];
+                let nRD=[...baseRD],nRI=[...baseRI];
+                let nAD=[...baseAD],nAS={...baseAS};
+                let nInc=[...baseInc];
+                let nAOrder=[...baseOrder];
 
-                if(sRocket){
-                    const p=parseSheetWithTimeline(sRocket,3); 
-                    if(p&&p.dCols.length){
-                        const{rows,hri,dCols,parsedDates}=p;
-                        nRD = cleanGhostDates(rDates, parsedDates);
-                        const iMap={};
-                        nRI.forEach(it=>{iMap[`${it.name}_${it.option}`]={...it,history:{...it.history}};});
-                        
-                        const rExcelSkus = new Set();
-                        const rOrderList = [];
-                        for(let i=hri+1;i<rows.length;i++){
-                            const row=rows[i];if(!row?.length)continue;
-                            const name=String(row[0]||"").trim();const option=String(row[1]||"").trim();const skuId=String(row[2]||"").trim();
-                            if(!name||name==="undefined")continue;
-                            const key=`${name}_${option}`;
-                            rExcelSkus.add(key);
-                            if(!rOrderList.includes(key)) rOrderList.push(key);
-                            if(!iMap[key])iMap[key]={name,option,skuId,history:{}};
-                            
-                            dCols.forEach((col,ci)=>{
-                                const raw=row[col.index];let val="-";
-                                if(raw!==""&&raw!=null){
-                                    if(raw instanceof Date){const p2=parseCellToParts(raw);val=p2?`${p2.y}-${String(p2.m).padStart(2,'0')}-${String(p2.d).padStart(2,'0')}`:"-";}
-                                    else if(typeof raw==="number")val=Math.round(raw);
-                                    else{const n=parseInt(String(raw).replace(/,/g,""));val=isNaN(n)?String(raw):n;}
-                                }
-                                iMap[key].history[parsedDates[ci]]=val;
-                            });
-                        }
-                        
-                        const missingKeys = [];
-                        Object.keys(iMap).forEach(key => {
-                            if(!rExcelSkus.has(key)) {
-                                parsedDates.forEach(pd => iMap[key].history[pd] = "-");
-                                missingKeys.push(key);
-                            }
-                        });
-                        nRI = [...rOrderList, ...missingKeys].map(k => iMap[k]);
-                    }
-                }
+                if(!sRocket)throw new Error('로켓배송 시트가 없습니다.');
+                const imported=importRocketSheet(sRocket,styledBook.worksheets[0],theme,baseRI,baseRD);nRI=imported.items;nRD=imported.dates;
 
                 if(sArgo){
                     let p=parseSheetWithTimeline(sArgo,3); 
@@ -780,11 +859,11 @@ function App() {
 
                     if(p&&p.dCols.length){
                         const{rows,hri,dCols,parsedDates}=p;
-                        nAD = cleanGhostDates(dbDates, parsedDates); 
+                        nAD = sortInventoryDates([...baseAD,...parsedDates]); 
                         
-                        const orig = mergeStockHistory(dbStock); 
+                        const orig = mergeStockHistory(baseAS); 
                         Object.keys(orig).forEach(k=>{
-                            nAS[k]=nAD.map(d=>{const oi=dbDates.indexOf(d);return oi!==-1?(orig[k]?.[oi]||0):0;});
+                            nAS[k]=nAD.map(d=>{const oi=baseAD.indexOf(d);return oi!==-1?(orig[k]?.[oi]||0):0;});
                         });
                         
                         const aExcelSkus = new Set();
@@ -836,7 +915,14 @@ function App() {
                     }
                 }
 
-                if(sDisp){
+                if(sDisp&&XLSX.utils.sheet_to_json(sDisp,{header:1})[0]?.[1]==='출고일'){
+                    const rows=XLSX.utils.sheet_to_json(sDisp,{header:1,defval:''});
+                    nInc=rows.slice(1).filter(row=>row[0]).map(row=>{
+                        const amount=Number(row[2]);if(!Number.isFinite(amount)||amount<0)throw new Error('출고 수량이 올바르지 않습니다.');
+                        const extra=row[5]?JSON.parse(String(row[5])):{};
+                        return {...extra,sku:String(row[0]),date:String(row[1]),amount,type:String(row[3]),isRegistered:row[4]==='완료'};
+                    });
+                }else if(sDisp){
                     try{
                         const p=parseSheetWithTimeline(sDisp,1);
                         if(p&&p.dCols.length){
@@ -855,48 +941,28 @@ function App() {
                     }catch(e){console.warn("출고 시트 스킵:",e);}
                 }
 
-                if(useFirebase) {
-                    // 오래된 날짜 이력 정리 (Firestore 1MB 문서 용량 제한 대응)
-                    if(nAD.length > MAX_HISTORY_DAYS){
-                        const keepDates = nAD.slice(nAD.length - MAX_HISTORY_DAYS);
-                        const idxMap = keepDates.map(d=>nAD.indexOf(d));
-                        Object.keys(nAS).forEach(sku=>{ nAS[sku] = idxMap.map(i=>nAS[sku][i]||0); });
-                        nAD = keepDates;
-                    }
-                    if(nRD.length > MAX_HISTORY_DAYS){
-                        const keepSet = new Set(nRD.slice(nRD.length - MAX_HISTORY_DAYS));
-                        nRD = nRD.filter(d=>keepSet.has(d));
-                        nRI = nRI.map(it=>{
-                            const h={}; Object.keys(it.history).forEach(d=>{ if(keepSet.has(d)) h[d]=it.history[d]; });
-                            return {...it, history:h};
-                        });
-                    }
-                    // 화면은 로컬 파싱 결과로 즉시 갱신하고, 클라우드 저장은 백그라운드에서 진행 (체감 속도 개선)
-                    setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);setAOrder(nAOrder);
-                    if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
-                    if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
-                    notify("엑셀 분석 완료! 클라우드 저장 중...");
-                    setDbSync("⏳ 저장 중...");
-                    db.doc(`yomimon_dashboard/inventory_master`).set({
-                        DATES: nAD, STOCK: nAS, INC: nInc, RD: nRD, RI: nRI, AORDER: nAOrder,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }).then(() => {
-                        notify("☁️ 클라우드 동기화 완료!");
-                    }).catch(e => {
-                        console.error("Firestore 저장 실패:", e);
-                        notify(`⚠️ 화면엔 반영됐지만 클라우드 저장은 실패했어요: ${e.code||""} ${e.message||e}`, "err");
+                const patch={RD:nRD,RI:nRI};
+                if(sArgo){patch.DATES=nAD;patch.STOCK=nAS;patch.AORDER=nAOrder;}
+                if(sDisp)patch.INC=nInc;
+                if(new Blob([JSON.stringify({...source,...patch})]).size>950000)throw new Error('전체 이력을 보존하면 저장 용량을 초과합니다. 이력을 삭제하지 않고 저장을 중단했습니다.');
+                if(useFirebase){
+                    setDbSync('저장 중...');const ref=db.doc('yomimon_dashboard/inventory_master');
+                    await db.runTransaction(async tx=>{
+                        const live=await tx.get(ref);if(!live.exists)throw new Error('클라우드 원본이 없습니다.');const liveData=live.data();
+                        if((liveData.updatedAt?.toMillis()||0)!==(source.updatedAt?.toMillis()||0))throw new Error('분석 중 다른 곳에서 데이터가 변경됐습니다. 엑셀을 다시 올려주세요.');
+                        tx.update(ref,{...patch,updatedAt:firebase.firestore.FieldValue.serverTimestamp(),rocketUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()});
                     });
-                } else {
-                    setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);setAOrder(nAOrder);
-                    try{localStorage.setItem(LS_KEY,JSON.stringify({DATES:nAD,STOCK:nAS,INC:nInc,RD:nRD,RI:nRI,AORDER:nAOrder}));}catch(e){}
-                    if(nAD.length){const last=nAD[nAD.length-1];setAY(last.slice(0,4));setAM(last.slice(5,7));setAD(last);}
-                    if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
-                    notify("엑셀 분석 완료 (오프라인 임시저장)");
+                }else{
+                    const now=new Date();setLastSyncedAt(now);
+                    try{localStorage.setItem(LS_KEY,JSON.stringify({...source,...patch,rocketUpdatedAt:now.toISOString()}));}catch(e){throw new Error('로컬 저장 공간이 부족합니다.');}
                 }
-
-            }catch(err){console.error(err);notify(`엑셀 파싱 오류: ${err.message||err}`,"err");}
+                setDbDates(nAD);setDbStock(nAS);setDbInc(nInc);setRDates(nRD);setRItems(nRI);setAOrder(nAOrder);
+                if(nRD.length){setRY(nRD[nRD.length-1].slice(0,4));setRM(nRD[nRD.length-1].slice(5,7));}
+                notify('엑셀의 상품 순서·색상·수량으로 저장했습니다. 기존 이력은 보존했습니다.');
+            }catch(err){console.error(err);setDbSync("엑셀 저장 실패");notify(`엑셀 저장 실패: ${err.message||err}`,"err");}finally{excelBusyRef.current=false;setExcelBusy(false);}
         };
-        reader.readAsBinaryString(file);
+        reader.onerror=()=>{excelBusyRef.current=false;setExcelBusy(false);notify("엑셀 파일을 읽지 못했습니다.","err");};
+        reader.readAsArrayBuffer(file);
     };
 
     const toggleReg=idx=>{
@@ -905,8 +971,8 @@ function App() {
             upd[gi]={...upd[gi],isRegistered:true};const us={...dbStock};const ci=dbDates.indexOf(aD);if(us[t.sku]&&ci!==-1)us[t.sku][ci]+=t.amount;
             
             if(useFirebase) {
-                db.doc(`yomimon_dashboard/inventory_master`).set({
-                    DATES: dbDates, STOCK: us, INC: upd, RD: rDates, RI: rItems, AORDER: aOrder,
+                db.doc(`yomimon_dashboard/inventory_master`).update({
+                    STOCK: us, INC: upd,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
             } else {
@@ -957,11 +1023,11 @@ function App() {
                         <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("연동") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                             {dbSync}
                         </span>
-                        {lastSyncedAt&&<span className="text-slate-400/70 whitespace-nowrap" style={{fontSize:"12px"}}>최종 업데이트: {fmtSyncTime(lastSyncedAt)}</span>}
+
                     </div>
                     
                     <div className="ml-auto flex items-center gap-2">
-                        <button type="button" onClick={()=>handleStockFetch(false)} disabled={stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
+                        <button type="button" onClick={()=>handleStockFetch(false)} disabled={excelBusy||stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
                         <a href="https://arxotn-git.github.io/receiving/receiving_index.html" 
                            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">
                             <span>입고 관리</span>
@@ -1015,7 +1081,7 @@ function App() {
                     ):(
                         <>
                             <div className="flex flex-col xl:flex-row xl:items-center gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-                                <h2 className="font-extrabold text-slate-800 text-xl px-2 whitespace-nowrap flex items-center gap-2 flex-shrink-0">🚀 로켓배송 실시간 상황판 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품</span><span className="font-bold whitespace-nowrap" style={{fontSize:"12px"}}><span className="text-emerald-600">도서 : 그린</span> / <span className="text-orange-500">완구 : 오렌지</span></span></h2>
+                                <div className="flex-shrink-0"><h2 className="font-extrabold text-slate-800 text-xl px-2 whitespace-nowrap flex items-center gap-2 flex-shrink-0">🚀 로켓배송 실시간 상황판 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품</span></h2><p className="px-2 mt-1.5 text-xs font-medium text-slate-500">재고 리스트 최종 업데이트: {lastSyncedAt?fmtSyncTime(lastSyncedAt):"확인 중"}</p></div>
 
                                 <div className="flex flex-col xl:flex-row xl:items-center gap-2 flex-1 min-w-0">
                                     {/* 검색 입력창: 남은 가로 공간만큼 확장 */}
@@ -1072,15 +1138,15 @@ function App() {
                                                 const nameBorder=cat==="book"?"border-l-4 border-emerald-400":cat==="toy"?"border-l-4 border-orange-400":"border-l-4 border-transparent";
                                                 return(
                                                     <tr key={idx} className={rowCls}>
-                                                        <td className={`py-4 px-5 font-extrabold fc1 whitespace-nowrap overflow-hidden text-ellipsis ${nameBg} ${nameTxt} ${nameBorder}`}>{item.name}</td>
-                                                        <td className={`py-4 px-5 text-slate-500 fc2 whitespace-nowrap overflow-hidden text-ellipsis ${bgNew}`}>{item.option||"-"}</td>
-                                                        <td className={`py-4 px-5 font-mono text-slate-400 text-xs fc3 whitespace-nowrap ${bgNew}`}>{item.skuId||"-"}</td>
+                                                        <td style={item.excelStyles?{...itemCellStyle(item,0),borderLeftColor:itemCellStyle(item,0).backgroundColor}:undefined} className={`py-4 px-5 font-extrabold fc1 whitespace-nowrap overflow-hidden text-ellipsis ${nameBg} ${nameTxt} ${nameBorder}`}>{item.name}</td>
+                                                        <td style={itemCellStyle(item,1)} className={`py-4 px-5 text-slate-500 fc2 whitespace-nowrap overflow-hidden text-ellipsis ${bgNew}`}>{item.option||"-"}</td>
+                                                        <td style={itemCellStyle(item,2)} className={`py-4 px-5 font-mono text-slate-400 text-xs fc3 whitespace-nowrap ${bgNew}`}>{item.skuId||"-"}</td>
                                                         {visRD.length===0&&<td className={bgNew}></td>}
                                                         {visRD.map((d,i)=>{
                                                             const v=item.history[d];const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
                                                             const wkStart=isWeekStartDate(visRD,i);
                                                             return(
-                                                                <td key={i} className={`py-4 px-4 text-center font-bold ${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
+                                                                <td key={i} style={itemCellStyle(item,0,d)} className={`py-4 px-4 text-center font-bold ${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
                                                                     {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
                                                                 </td>
                                                             );
@@ -1293,10 +1359,11 @@ function App() {
                         <h4 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
                             📊 통합 엑셀 파일 직접 연동 관리자
                         </h4>
-                        <p className="text-xs text-slate-400 mt-1">로켓배송 / N배송 / 출고 엑셀이 합쳐진 파일 하나만 끌어다 놓으시면 브라우저가 수만 개의 과거 이력까지 스스로 복원하여 저장합니다.</p>
+                        <p className="text-xs text-slate-400 mt-1">엑셀(.xlsx)의 상품 순서와 셀 색상을 최우선으로 반영합니다. 현재고를 불러와도 이 설정과 기존 이력은 유지됩니다.</p>
                       </div>
                       <div className="flex flex-col items-start md:items-end gap-2">
                         <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={handleExcelDownload} disabled={excelBusy} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-bold rounded-xl shadow-sm">{excelBusy?"엑셀 처리 중...":"엑셀 다운로드"}</button>
                           <button type="button" onClick={downloadSource} className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-extrabold rounded-xl shadow-sm">원본 다운로드</button>
                           <button type="button" onClick={()=>setShowSourceHelp(v=>!v)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-extrabold rounded-xl shadow-sm">원본 소스 업데이트</button>
                         </div>
@@ -1311,7 +1378,7 @@ function App() {
                     </div>}
                     {showSourceHelp&&<div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700 space-y-2"><p className="font-bold">수정한 웹페이지 원본 올리기</p><p>1. 원본 다운로드로 받은 index.html을 수정합니다. 이름은 반드시 index.html로 유지하세요.</p><p>2. 아래 GitHub 업로드 화면을 열고 저장소 소유 계정으로 로그인합니다.</p><p>3. Choose your files에서 수정한 index.html을 고른 뒤 Commit changes를 누릅니다. 게시까지 잠시 걸릴 수 있습니다.</p><p>원본은 페이지 코드이며 재고 데이터 백업이 아닙니다. 출처가 불확실한 코드는 올리지 마세요. 이전 원본은 GitHub 기록에서 복구할 수 있습니다.</p><a href="https://github.com/arxotn-git/yorgo/upload/main" target="_blank" rel="noopener noreferrer" className="inline-block text-blue-700 font-bold underline">GitHub 업로드 화면 열기 ↗</a></div>}
                     <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 rounded-2xl p-10 text-center transition-colors bg-indigo-50/20 relative cursor-pointer">
-                        <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} onClick={e=>e.target.value=null} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
+                        <input type="file" accept=".xlsx" disabled={excelBusy} onChange={handleUpload} onClick={e=>e.target.value=null} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
                         <span className="text-4xl block mb-4">📂</span>
                         <h5 className="text-sm font-extrabold text-indigo-950">여기에 엑셀 파일을 드래그 앤 드롭 하세요</h5>
                     </div>
