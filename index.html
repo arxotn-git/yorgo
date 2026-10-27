@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v59)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v60)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 59; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
+const APP_VERSION = 60; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
 const LS_KEY = `argo_dashboard_master_v${APP_VERSION}`;
 
 const firebaseConfig = {
@@ -180,6 +180,24 @@ const isWeekStartDate = (dates, i) => {
 // Firestore 문서는 1MB 제한이 있음 - 날짜 이력이 계속 누적되면 업로드가 느려지다가 결국 실패함.
 // 최근 N일치 이력만 유지하도록 오래된 날짜 컬럼을 정리한다.
 const MAX_HISTORY_DAYS = 120;
+// Chrome extension inventory bridge. IDs are vendorItemIds, never credentials.
+const YORGO_STOCK_SOURCE = "yorgo-dashboard";
+const STOCK_MAPPING = [
+ {name:"플레이돌",option:"기본형",vendorItemId:"91334053184"},{name:"플레이돌 맥스",option:"프리미엄",vendorItemId:"95409717944"},
+ {name:"키즈탭 프로",option:"단품",vendorItemId:"89581544062"},{name:"키즈탭 프로",option:"디즈니",vendorItemId:"95535900326"},
+ {name:"클레이",option:"10종팩",vendorItemId:"91510383676"},{name:"클레이",option:"기프트세트",vendorItemId:"91547708125"},{name:"클레이",option:"10종팩-프레시",vendorItemId:"92213410006",deliveryType:"로켓프레시"},{name:"클레이",option:"15종팩",vendorItemId:"94489577117"},
+ {name:"와우펜",option:"1세트",vendorItemId:"88104937931"},{name:"와우펜북",option:"한글",vendorItemId:"89762804903"},{name:"와우펜북",option:"영어",vendorItemId:"90269613840"},{name:"와우펜북",option:"숫자",vendorItemId:"90269613854"},{name:"와우펜북",option:"4종(선물)",vendorItemId:"90388406236"},{name:"와우펜북",option:"미술",vendorItemId:"90396728042"},
+ {name:"낱말카드",option:"-",vendorItemId:"92417596221"},{name:"무선마이크",option:"",vendorItemId:"94498767601"},
+ {name:"차트",option:"한글",vendorItemId:"4674125444"},{name:"차트",option:"숫자",vendorItemId:"4819885217"},{name:"차트",option:"잉글리쉬",vendorItemId:"4819885267"},{name:"차트",option:"육지동물",vendorItemId:"4819885539"},{name:"차트",option:"5종",vendorItemId:"4904509145"},{name:"차트",option:"3종",vendorItemId:"89132115519"},
+ {name:"사운드북",option:"그린",vendorItemId:"87793988086"},{name:"사운드북",option:"옐로우",vendorItemId:"87793988095"},{name:"사운드북",option:"오렌지",vendorItemId:"87793988133"},{name:"사운드북",option:"3종",vendorItemId:"89132115547"},{name:"사운드북",option:"5종(쇼핑백)",vendorItemId:"90346226794"},
+ {name:"동화툰 패키지",option:"1년",vendorItemId:"92082108245"},{name:"그리고지우고",option:"프리미엄",vendorItemId:"92602495405"},{name:"지우개",option:"4개",vendorItemId:"95141891887"},{name:"보드마카+지우개",option:"세트",vendorItemId:"95148334030"},{name:"샤워타월",option:"2개",vendorItemId:"96168931588"},
+ {name:"빅북",option:"영어공부",vendorItemId:"75421956523"},{name:"빅북",option:"호기심",vendorItemId:"75421956574"},{name:"빅북",option:"3종",vendorItemId:"75478125673"}
+];
+const stockKey = (name, option) => `${String(name||"").trim()}\u0000${String(option||"").trim()}`;
+const todayKst = () => new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const isStockNumber = v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+const nextRunDate = (dates, today) => { if(!dates.includes(today)) return today; let n=2; while(dates.includes(`${today} (${n})`)) n++; return `${today} (${n})`; };
+
 
 const INIT_INC = [
     {sku:"안심클레이 10종팩",date:"2026-05-14",amount:120,type:"택배",isRegistered:true},
@@ -327,6 +345,7 @@ function App() {
     const [rDates,setRDates]=useState([]);
     const [rItems,setRItems]=useState([]);
     const [aOrder,setAOrder]=useState([]); 
+    const [stockRun,setStockRun]=useState({phase:"idle",message:"",details:[]});
     
     // 🔥 전역 검색어 State (탭 변경시에도 검색어 유지)
     const [srch,setSrch]=useState(""); 
@@ -625,6 +644,55 @@ function App() {
         tot:allSkus.reduce((s,i)=>s+i.currentStock,0),
         ads:allSkus.reduce((s,i)=>s+i.ads,0).toFixed(1)
     }),[allSkus]);
+
+
+    const stockBusyRef = useRef(false);
+    const loginWaitRef = useRef(0);
+    const bridgeRequest = (type, queries=[], timeout=8000) => new Promise((resolve,reject)=>{
+        const requestId='stock-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+        const onMessage=e=>{const d=e.data||{};if(e.source!==window||e.origin!==location.origin||d.source!=='yorgo-extension'||d.requestId!==requestId)return;clearTimeout(timer);window.removeEventListener('message',onMessage);resolve(d);};
+        const timer=setTimeout(()=>{window.removeEventListener('message',onMessage);reject(new Error(type==='YORGO_STOCK_PING'?'Chrome 보조 기능이 연결되지 않았습니다. 아래 설치 안내를 확인하고 설치 후 새로고침하세요.':'조회 응답이 늦어 저장하지 않았습니다. 잠시 뒤 다시 눌러주세요.'));},timeout);
+        window.addEventListener('message',onMessage);window.postMessage({source:YORGO_STOCK_SOURCE,type,requestId,queries},location.origin);
+    });
+    const stockQuery = q => ({'와우펜북':'와우펜','키즈탭 프로':'키즈탭','동화툰 패키지':'동화툰','보드마카+지우개':'지우개'}[q.name]||q.name);
+    const inventoryQueries = () => {
+        const latest=rDates[rDates.length-1];const map=new Map(STOCK_MAPPING.map(m=>[stockKey(m.name,m.option),m]));const seen=new Set(),queries=[],problems=[];
+        const tracked=rItems.filter(item=>isStockNumber(item.history?.[latest]));
+        tracked.forEach(item=>{const key=stockKey(item.name,item.option);if(seen.has(key)){problems.push('중복 상품: '+item.name+' / '+item.option);return;}seen.add(key);const m=map.get(key);if(!m)problems.push('상품 연결 확인 필요: '+item.name+' / '+item.option);else queries.push({...m,skuId:String(item.skuId||'')});});
+        if(new Set(STOCK_MAPPING.map(m=>stockKey(m.name,m.option))).size!==STOCK_MAPPING.length)problems.push('내장 상품 목록 중복');
+        return {latest,tracked,queries,problems};
+    };
+    const applyInventoryResults = async (queries,response) => {
+        const rows=Array.isArray(response.results)?response.results:[],byQuery=new Map(rows.map(r=>[String(r.query||''),r])),values=new Map(),failures=[];
+        queries.forEach(q=>{const r=byQuery.get(stockQuery(q));const p=Array.isArray(r?.products)?r.products.find(x=>String(x.vendoritemid)===q.vendorItemId):null;const qty=p?.stockQuantity;
+            if(!r||!r.complete||r.status!=='OK'||!p||p.status!=='OK'||!Number.isSafeInteger(qty)||qty<0){failures.push(q.name+' / '+(q.option||'-'));return;}values.set(stockKey(q.name,q.option),qty);});
+        if(failures.length||values.size!==queries.length)throw new Error('일부 상품의 표시 수량을 확인하지 못해 전부 저장하지 않았습니다: '+failures.join(', '));
+        const ref=db.doc('yomimon_dashboard/inventory_master');
+        return db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw new Error('클라우드 원본을 찾지 못했습니다.');const d=snap.data();if(!Array.isArray(d.RD)||!Array.isArray(d.RI))throw new Error('원본 구조가 달라 저장하지 않았습니다.');
+            const today=todayKst(),rd=[...d.RD];if(rd.some(x=>String(x).slice(0,10)>today))throw new Error('원본 날짜가 오늘보다 미래입니다. 날짜를 확인해주세요.');
+            const latest=rd[rd.length-1],active=d.RI.filter(x=>isStockNumber(x.history?.[latest]));if(active.length!==queries.length)throw new Error('조회 중 상품 목록이 변경됐습니다. 새로고침 후 재시도하세요.');
+            const keys=new Set();active.forEach(x=>{const key=stockKey(x.name,x.option);if(keys.has(key)||!values.has(key))throw new Error('상품 목록이 변경되어 저장을 중단했습니다.');keys.add(key);const q=queries.find(q=>stockKey(q.name,q.option)===key);if(String(x.skuId||'')!==q.skuId)throw new Error('SKU가 변경됐습니다. 새로고침 후 확인해주세요.');});
+            const runDate=nextRunDate(rd,today);const ri=d.RI.map(x=>({...x,history:{...(x.history||{}),[runDate]:values.has(stockKey(x.name,x.option))?values.get(stockKey(x.name,x.option)):'-'}}));
+            const candidate={...d,RD:[...rd,runDate],RI:ri};if(new Blob([JSON.stringify(candidate)]).size>950000)throw new Error('클라우드 문서 용량이 커서 저장하지 않았습니다. 기록 분리 보관이 필요합니다.');
+            tx.update(ref,{RD:candidate.RD,RI:ri,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});return runDate;});
+    };
+    const handleStockFetch = async (automatic=false) => {
+        automatic=automatic===true;
+        if(stockBusyRef.current)return;stockBusyRef.current=true;
+        try{
+            if(!useFirebase)throw new Error('클라우드 연결이 없어 저장하지 않았습니다.');const check=inventoryQueries();
+            if(!check.latest||!check.tracked.length||check.problems.length)throw new Error(check.problems.join(', ')||'조회할 숫자 재고 상품이 없습니다.');
+            if(!automatic)setStockRun({phase:'loading',message:'Chrome 보조 기능 연결 확인 중...',details:[]});
+            const ping=await bridgeRequest('YORGO_STOCK_PING');if(!ping.ok)throw new Error('보조 기능을 사용할 수 없습니다: '+ping.status);
+            if(!automatic)setStockRun({phase:'loading',message:check.queries.length+'개 상품의 화면 표시 재고을 조회 중입니다. 잠시 기다려주세요.',details:[]});
+            const response=await bridgeRequest('YORGO_STOCK_FETCH',[...new Set(check.queries.map(stockQuery))],260000);
+            if(response.retryAfterLogin){if(!loginWaitRef.current)loginWaitRef.current=Date.now();setStockRun({phase:'login',message:response.loginOpened?'쿠팡 창을 열었습니다. 로그인하면 10초 간격으로 확인해 자동 수집합니다. 이 페이지를 닫지 마세요.':'쿠팡 로그인이 필요합니다. 아래 로그인 링크를 열어주세요. 로그인 후 자동 확인합니다.',details:[]});return;}
+            if(!response.ok){const states=[...new Set((response.results||[]).filter(r=>!r.complete||r.status!=='OK').map(r=>r.status))];throw new Error('쿠팡 조회 실패 ('+(states.join(', ')||response.status)+'). 쿠팡 로그인/새로고침 후 재시도하세요. 재고는 저장하지 않았습니다.');}
+            loginWaitRef.current=0;const runDate=await applyInventoryResults(check.queries,response);setStockRun({phase:'done',message:check.queries.length+'개 상품을 '+runDate+' 열로 추가했습니다. 기존 기록은 유지했습니다.',details:[]});
+        }catch(e){setStockRun({phase:'error',message:'저장하지 않았습니다.',details:[String(e.message||e)]});}finally{stockBusyRef.current=false;}
+    };
+
+    useEffect(()=>{if(stockRun.phase!=='login')return;const timer=setInterval(()=>{if(Date.now()-loginWaitRef.current>180000){setStockRun({phase:'error',message:'로그인 대기 시간이 지났습니다. 로그인 후 현재고 불러오기를 다시 눌러주세요.',details:[]});return;}handleStockFetch(true);},10000);return()=>clearInterval(timer);},[stockRun.phase]);
 
     const handleUpload=e=>{
         const file=e.target.files[0]; if(!file)return;
@@ -948,6 +1016,12 @@ function App() {
                                     </div>
                                 </div>
                             </div>
+                            <section className="bg-white rounded-2xl border border-blue-100 p-4 mb-3">
+  <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={()=>handleStockFetch(false)} disabled={stockRun.phase==='loading'||stockRun.phase==='login'} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-extrabold px-5 py-3 rounded-xl">{stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button><span className="text-sm text-slate-500">Chrome만 켜져 있으면 됩니다. Aside와 유료 서버는 필요 없습니다.</span></div>
+  <details className="mt-3 text-sm text-slate-600"><summary className="cursor-pointer font-bold">처음 한 번: 회사 Chrome 보조 기능 설치 안내</summary><ol className="list-decimal ml-5 mt-2 space-y-1"><li><a className="text-blue-600 underline" href="./yorgo-stock-bridge.zip" download>보조 기능 ZIP 다운로드</a> 후 압축을 풉니다. 이 폴더는 지우지 마세요.</li><li>Chrome 주소창에 chrome://extensions 를 입력합니다.</li><li>오른쪽 위 개발자 모드를 켜고 ‘압축해제된 확장 프로그램을 로드합니다’를 누릅니다.</li><li>manifest.json이 있는 폴더를 선택하고 이 대시보드를 새로고침합니다.</li><li>현재고 불러오기를 누릅니다. 쿠팡 로그인이 필요하면 열린 쿠팡 창에서 로그인합니다.</li></ol><p className="mt-2">비밀번호/쿠키는 이 사이트나 서버에 저장하지 않습니다. 이 기능은 로켓 재고만 새 열에 추가하며 N배송·출고는 바꾸지 않습니다.</p></details>
+  <a className="inline-block text-xs mt-2 text-blue-600 underline" target="_blank" rel="noopener noreferrer" href="https://advertising.coupang.com/marketing/campaign/registration?goalType%3DSALES&amp;_cap_client=SUPPLIERHUB">쿠팡 로그인/광고센터 열기</a>
+</section>
+                            {stockRun.phase!=="idle"&&<div className={`rounded-2xl border p-4 text-sm font-bold ${stockRun.phase==="error"?"bg-red-50 border-red-200 text-red-800":stockRun.phase==="login"?"bg-amber-50 border-amber-200 text-amber-900":"bg-blue-50 border-blue-200 text-blue-900"}`}><div>{stockRun.message}</div>{stockRun.phase==="login"&&<button onClick={handleStockFetch} className="mt-2 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-extrabold">재시도</button>}{stockRun.details.map((d,i)=><div key={i} className="mt-1 text-xs whitespace-pre-wrap">• {d}</div>)}{stockRun.phase==="error"&&<div className="mt-2 text-xs font-normal">확장 프로그램이 없으면 설치 후 이 페이지를 새로고침하세요. 로그인 정보나 비밀값은 이 페이지에 입력하지 않습니다.</div>}</div>}
                             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex-grow freeze-wrap">
                                 {filtRI.length===0?(
                                     <div className="py-16 text-center"><p className="text-slate-400 text-sm">해당 조건에 맞는 상품이 없습니다.</p>
