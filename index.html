@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v61)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v62)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 61; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
+const APP_VERSION = 62; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
 const LS_KEY = `argo_dashboard_master_v${APP_VERSION}`;
 
 const firebaseConfig = {
@@ -432,17 +432,25 @@ function App() {
     const nowYM=useMemo(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;},[]);
     const lastYM=useMemo(()=>{const n=new Date();const l=new Date(n.getFullYear(),n.getMonth()-1,1);return `${l.getFullYear()}-${String(l.getMonth()+1).padStart(2,'0')}`;},[]);
 
+    // 화면 표시만 접습니다. 원본 날짜와 재고 데이터는 수정하지 않습니다.
+    const [showAllDailyRuns,setShowAllDailyRuns]=useState(false);
+    const dateDay=(value)=>{const match=String(value).match(/^(\d{4}-\d{2}-\d{2})(?: \((\d+)\))?$/);return match?match[1]:String(value);};
+    const dateRun=(value)=>{const match=String(value).match(/^\d{4}-\d{2}-\d{2}(?: \((\d+)\))?$/);return match&&match[1]?Number(match[1]):1;};
     const visRD=useMemo(()=>{
         if(!rDates.length)return[];
-        if(rMode==="TODAY") return rDates.slice(-1);
-        if(rMode==="5") return rDates.slice(-5);
-        if(rMode==="10") return rDates.slice(-10);
-        if(rMode==="15") return rDates.slice(-15);
-        if(rMode==="30") return rDates.slice(-30);
-        if(rMode==="THIS") return rDates.filter(d=>d.startsWith(nowYM));
-        if(rMode==="LAST") return rDates.filter(d=>d.startsWith(lastYM));
-        return rDates.filter(d=>d.startsWith(`${rY}-${rM}`));
-    },[rDates,rMode,rY,rM,nowYM,lastYM]);
+        const days=[...new Set(rDates.map(dateDay))];
+        let chosen;
+        if(rMode==='TODAY')chosen=new Set(days.slice(-1));
+        else if(['5','10','15','30'].includes(rMode))chosen=new Set(days.slice(-Number(rMode)));
+        else if(rMode==='THIS')chosen=new Set(days.filter(d=>d.startsWith(nowYM)));
+        else if(rMode==='LAST')chosen=new Set(days.filter(d=>d.startsWith(lastYM)));
+        else chosen=new Set(days.filter(d=>d.startsWith(rY+'-'+rM)));
+        const selected=rDates.filter(d=>chosen.has(dateDay(d)));
+        if(showAllDailyRuns)return selected;
+        const latest=new Map();
+        selected.forEach(d=>{const day=dateDay(d),previous=latest.get(day);if(previous===undefined||dateRun(d)>=dateRun(previous))latest.set(day,d);});
+        return selected.filter(d=>latest.get(dateDay(d))===d);
+    },[rDates,rMode,rY,rM,nowYM,lastYM,showAllDailyRuns]);
 
     const filtRI=useMemo(()=>{
         return rItems.filter(item=>{
@@ -695,6 +703,7 @@ function App() {
     useEffect(()=>{if(stockRun.phase!=='login')return;const timer=setInterval(()=>{if(Date.now()-loginWaitRef.current>180000){setStockRun({phase:'error',message:'로그인 대기 시간이 지났습니다. 로그인 후 현재고 불러오기를 다시 눌러주세요.',details:[]});return;}handleStockFetch(true);},10000);return()=>clearInterval(timer);},[stockRun.phase]);
 
     const [showSourceHelp,setShowSourceHelp]=useState(false);
+    const [showBridgeHelp,setShowBridgeHelp]=useState(false);
     const downloadSource=async()=>{
         try {
             const response=await fetch(window.location.pathname+'?source_download='+Date.now(),{cache:'no-store'});
@@ -1020,6 +1029,7 @@ function App() {
                                             <input type="checkbox" checked={rShowZero} onChange={e=>setRShowZero(e.target.checked)} className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5 cursor-pointer"/>
                                             <span>재고 0개도 보기</span>
                                         </label>
+                                        <button type="button" onClick={()=>setShowAllDailyRuns(v=>!v)} aria-pressed={showAllDailyRuns} className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all ${showAllDailyRuns?'bg-blue-50 border-blue-300 text-blue-700':'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{showAllDailyRuns?'같은 날짜 기록 접기':'같은 날짜 기록 펼치기'}</button>
                                         <ModeBtns mode={rMode} setMode={setRMode} color="blue"/>
                                         <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
                                             <Dropdown value={rY} options={rYears.map(y=>({value:y,label:`${y}년`}))} onChange={v=>{setRY(v);setRMode("MONTH");}}/>
@@ -1290,10 +1300,15 @@ function App() {
                           <button type="button" onClick={downloadSource} className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-extrabold rounded-xl shadow-sm">원본 다운로드</button>
                           <button type="button" onClick={()=>setShowSourceHelp(v=>!v)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-extrabold rounded-xl shadow-sm">원본 소스 업데이트</button>
                         </div>
-                        <details className="text-xs text-slate-500"><summary className="cursor-pointer font-bold">처음 한 번: 회사 Chrome 보조 기능 설치 안내</summary><ol className="list-decimal ml-5 mt-2 space-y-1"><li><a className="text-blue-600 underline" href="./yorgo-stock-bridge.zip" download>보조 기능 ZIP 다운로드</a> 후 압축을 풉니다. 이 폴더는 지우지 마세요.</li><li>Chrome 주소창에 chrome://extensions 를 입력합니다.</li><li>오른쪽 위 개발자 모드를 켜고 ‘압축해제된 확장 프로그램을 로드합니다’를 누릅니다.</li><li>manifest.json이 있는 폴더를 선택하고 이 대시보드를 새로고침합니다.</li><li>현재고 불러오기를 누릅니다. 쿠팡 로그인이 필요하면 열린 쿠팡 창에서 로그인합니다.</li></ol><p className="mt-2">비밀번호/쿠키는 이 사이트나 서버에 저장하지 않습니다. 이 기능은 로켓 재고만 새 열에 추가하며 N배송·출고는 바꾸지 않습니다.</p></details>
+                        <button type="button" onClick={()=>setShowBridgeHelp(v=>!v)} aria-expanded={showBridgeHelp} className="text-xs font-semibold text-slate-500 hover:text-blue-700 flex items-center gap-1.5"><span className="text-blue-600">ⓘ</span> 보조 기능 설치 안내 <span aria-hidden="true">{showBridgeHelp?'▴':'▾'}</span></button>
                         <a className="text-xs text-blue-600 underline" target="_blank" rel="noopener noreferrer" href="https://advertising.coupang.com/marketing/campaign/registration?goalType%3DSALES&amp;_cap_client=SUPPLIERHUB">쿠팡 로그인/광고센터 열기</a>
                       </div>
                     </div>
+                    {showBridgeHelp&&<div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 sm:p-6 text-slate-700">
+                      <div className="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h5 className="text-base font-bold text-slate-800">Chrome 보조 기능 설치 안내</h5><p className="text-sm text-slate-500 mt-1">회사 PC에서 처음 한 번만 설치하세요.</p></div><button type="button" onClick={()=>setShowBridgeHelp(false)} className="text-sm font-semibold text-slate-500 hover:text-slate-800">닫기 ✕</button></div>
+                      <ol className="grid gap-2 text-sm leading-relaxed sm:grid-cols-2"><li className="bg-white rounded-xl border border-blue-100 p-3"><b className="text-blue-600 mr-2">01</b><a href="./yorgo-stock-bridge.zip" download className="text-blue-700 font-bold underline">보조 기능 ZIP 다운로드</a> 후 압축을 풉니다.</li><li className="bg-white rounded-xl border border-blue-100 p-3"><b className="text-blue-600 mr-2">02</b>Chrome 주소창에 <b>chrome://extensions</b>를 입력합니다.</li><li className="bg-white rounded-xl border border-blue-100 p-3"><b className="text-blue-600 mr-2">03</b>개발자 모드를 켜고 <b>압축해제된 확장 프로그램 로드</b>를 누릅니다.</li><li className="bg-white rounded-xl border border-blue-100 p-3"><b className="text-blue-600 mr-2">04</b><b>manifest.json이 있는 폴더</b>를 선택한 뒤 이 페이지를 새로고침합니다.</li></ol>
+                      <p className="mt-4 text-sm text-slate-600 leading-relaxed">압축을 푼 폴더는 삭제하지 마세요. 설치 후 <b>현재고 불러오기</b>를 누르고, 쿠팡 로그인 창이 열리면 로그인하세요. 로켓 재고만 새 열로 추가하며 N배송·출고는 변경하지 않습니다.</p>
+                    </div>}
                     {showSourceHelp&&<div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700 space-y-2"><p className="font-bold">수정한 웹페이지 원본 올리기</p><p>1. 원본 다운로드로 받은 index.html을 수정합니다. 이름은 반드시 index.html로 유지하세요.</p><p>2. 아래 GitHub 업로드 화면을 열고 저장소 소유 계정으로 로그인합니다.</p><p>3. Choose your files에서 수정한 index.html을 고른 뒤 Commit changes를 누릅니다. 게시까지 잠시 걸릴 수 있습니다.</p><p>원본은 페이지 코드이며 재고 데이터 백업이 아닙니다. 출처가 불확실한 코드는 올리지 마세요. 이전 원본은 GitHub 기록에서 복구할 수 있습니다.</p><a href="https://github.com/arxotn-git/yorgo/upload/main" target="_blank" rel="noopener noreferrer" className="inline-block text-blue-700 font-bold underline">GitHub 업로드 화면 열기 ↗</a></div>}
                     <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 rounded-2xl p-10 text-center transition-colors bg-indigo-50/20 relative cursor-pointer">
                         <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} onClick={e=>e.target.value=null} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
