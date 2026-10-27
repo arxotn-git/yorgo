@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v60)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v61)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -67,7 +67,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 60; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
+const APP_VERSION = 61; // 앱 버전 - 수정 시 이 숫자만 올리면 LS_KEY/헤더 표기에 함께 반영됨
 const LS_KEY = `argo_dashboard_master_v${APP_VERSION}`;
 
 const firebaseConfig = {
@@ -694,6 +694,18 @@ function App() {
 
     useEffect(()=>{if(stockRun.phase!=='login')return;const timer=setInterval(()=>{if(Date.now()-loginWaitRef.current>180000){setStockRun({phase:'error',message:'로그인 대기 시간이 지났습니다. 로그인 후 현재고 불러오기를 다시 눌러주세요.',details:[]});return;}handleStockFetch(true);},10000);return()=>clearInterval(timer);},[stockRun.phase]);
 
+    const [showSourceHelp,setShowSourceHelp]=useState(false);
+    const downloadSource=async()=>{
+        try {
+            const response=await fetch(window.location.pathname+'?source_download='+Date.now(),{cache:'no-store'});
+            if(!response.ok)throw new Error('원본을 가져오지 못했습니다.');
+            const html=await response.text();
+            if(!html.toLowerCase().includes('<html'))throw new Error('정상적인 페이지 원본이 아닙니다.');
+            const url=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));
+            const a=document.createElement('a');a.href=url;a.download='index.html';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+        } catch(e) { alert('원본 다운로드 실패: '+String(e.message||e)); }
+    };
+
     const handleUpload=e=>{
         const file=e.target.files[0]; if(!file)return;
         const reader=new FileReader();
@@ -940,14 +952,15 @@ function App() {
                     </div>
                     
                     <div className="ml-auto flex items-center gap-2">
+                        <button type="button" onClick={()=>handleStockFetch(false)} disabled={stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
                         <a href="https://arxotn-git.github.io/receiving/receiving_index.html" 
-                           className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">
-                            <span>이지어드민 입고 내역</span>
+                           className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">
+                            <span>입고 관리</span>
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
                         </a>
                         <a href="https://arxotn-git.github.io/CLSTOCK/clindex.html" 
-                           className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">
-                            <span>CL시스템 재고 관리</span>
+                           className="inline-flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">
+                            <span>재고 관리</span>
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                         </a>
                     </div>
@@ -1016,11 +1029,7 @@ function App() {
                                     </div>
                                 </div>
                             </div>
-                            <section className="bg-white rounded-2xl border border-blue-100 p-4 mb-3">
-  <div className="flex flex-wrap items-center gap-3"><button type="button" onClick={()=>handleStockFetch(false)} disabled={stockRun.phase==='loading'||stockRun.phase==='login'} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-extrabold px-5 py-3 rounded-xl">{stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button><span className="text-sm text-slate-500">Chrome만 켜져 있으면 됩니다. Aside와 유료 서버는 필요 없습니다.</span></div>
-  <details className="mt-3 text-sm text-slate-600"><summary className="cursor-pointer font-bold">처음 한 번: 회사 Chrome 보조 기능 설치 안내</summary><ol className="list-decimal ml-5 mt-2 space-y-1"><li><a className="text-blue-600 underline" href="./yorgo-stock-bridge.zip" download>보조 기능 ZIP 다운로드</a> 후 압축을 풉니다. 이 폴더는 지우지 마세요.</li><li>Chrome 주소창에 chrome://extensions 를 입력합니다.</li><li>오른쪽 위 개발자 모드를 켜고 ‘압축해제된 확장 프로그램을 로드합니다’를 누릅니다.</li><li>manifest.json이 있는 폴더를 선택하고 이 대시보드를 새로고침합니다.</li><li>현재고 불러오기를 누릅니다. 쿠팡 로그인이 필요하면 열린 쿠팡 창에서 로그인합니다.</li></ol><p className="mt-2">비밀번호/쿠키는 이 사이트나 서버에 저장하지 않습니다. 이 기능은 로켓 재고만 새 열에 추가하며 N배송·출고는 바꾸지 않습니다.</p></details>
-  <a className="inline-block text-xs mt-2 text-blue-600 underline" target="_blank" rel="noopener noreferrer" href="https://advertising.coupang.com/marketing/campaign/registration?goalType%3DSALES&amp;_cap_client=SUPPLIERHUB">쿠팡 로그인/광고센터 열기</a>
-</section>
+
                             {stockRun.phase!=="idle"&&<div className={`rounded-2xl border p-4 text-sm font-bold ${stockRun.phase==="error"?"bg-red-50 border-red-200 text-red-800":stockRun.phase==="login"?"bg-amber-50 border-amber-200 text-amber-900":"bg-blue-50 border-blue-200 text-blue-900"}`}><div>{stockRun.message}</div>{stockRun.phase==="login"&&<button onClick={handleStockFetch} className="mt-2 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-extrabold">재시도</button>}{stockRun.details.map((d,i)=><div key={i} className="mt-1 text-xs whitespace-pre-wrap">• {d}</div>)}{stockRun.phase==="error"&&<div className="mt-2 text-xs font-normal">확장 프로그램이 없으면 설치 후 이 페이지를 새로고침하세요. 로그인 정보나 비밀값은 이 페이지에 입력하지 않습니다.</div>}</div>}
                             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex-grow freeze-wrap">
                                 {filtRI.length===0?(
@@ -1269,12 +1278,23 @@ function App() {
             {/* 공통 엑셀 업로드 */}
             <div className="px-6 md:px-10 pb-10 w-full mt-auto">
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
-                    <div>
+                    <div className="flex flex-wrap justify-between items-start gap-4">
+                      <div>
                         <h4 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
                             📊 통합 엑셀 파일 직접 연동 관리자
                         </h4>
                         <p className="text-xs text-slate-400 mt-1">로켓배송 / N배송 / 출고 엑셀이 합쳐진 파일 하나만 끌어다 놓으시면 브라우저가 수만 개의 과거 이력까지 스스로 복원하여 저장합니다.</p>
+                      </div>
+                      <div className="flex flex-col items-start md:items-end gap-2">
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" onClick={downloadSource} className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white text-sm font-extrabold rounded-xl shadow-sm">원본 다운로드</button>
+                          <button type="button" onClick={()=>setShowSourceHelp(v=>!v)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-extrabold rounded-xl shadow-sm">원본 소스 업데이트</button>
+                        </div>
+                        <details className="text-xs text-slate-500"><summary className="cursor-pointer font-bold">처음 한 번: 회사 Chrome 보조 기능 설치 안내</summary><ol className="list-decimal ml-5 mt-2 space-y-1"><li><a className="text-blue-600 underline" href="./yorgo-stock-bridge.zip" download>보조 기능 ZIP 다운로드</a> 후 압축을 풉니다. 이 폴더는 지우지 마세요.</li><li>Chrome 주소창에 chrome://extensions 를 입력합니다.</li><li>오른쪽 위 개발자 모드를 켜고 ‘압축해제된 확장 프로그램을 로드합니다’를 누릅니다.</li><li>manifest.json이 있는 폴더를 선택하고 이 대시보드를 새로고침합니다.</li><li>현재고 불러오기를 누릅니다. 쿠팡 로그인이 필요하면 열린 쿠팡 창에서 로그인합니다.</li></ol><p className="mt-2">비밀번호/쿠키는 이 사이트나 서버에 저장하지 않습니다. 이 기능은 로켓 재고만 새 열에 추가하며 N배송·출고는 바꾸지 않습니다.</p></details>
+                        <a className="text-xs text-blue-600 underline" target="_blank" rel="noopener noreferrer" href="https://advertising.coupang.com/marketing/campaign/registration?goalType%3DSALES&amp;_cap_client=SUPPLIERHUB">쿠팡 로그인/광고센터 열기</a>
+                      </div>
                     </div>
+                    {showSourceHelp&&<div className="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-700 space-y-2"><p className="font-bold">수정한 웹페이지 원본 올리기</p><p>1. 원본 다운로드로 받은 index.html을 수정합니다. 이름은 반드시 index.html로 유지하세요.</p><p>2. 아래 GitHub 업로드 화면을 열고 저장소 소유 계정으로 로그인합니다.</p><p>3. Choose your files에서 수정한 index.html을 고른 뒤 Commit changes를 누릅니다. 게시까지 잠시 걸릴 수 있습니다.</p><p>원본은 페이지 코드이며 재고 데이터 백업이 아닙니다. 출처가 불확실한 코드는 올리지 마세요. 이전 원본은 GitHub 기록에서 복구할 수 있습니다.</p><a href="https://github.com/arxotn-git/yorgo/upload/main" target="_blank" rel="noopener noreferrer" className="inline-block text-blue-700 font-bold underline">GitHub 업로드 화면 열기 ↗</a></div>}
                     <div className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 rounded-2xl p-10 text-center transition-colors bg-indigo-50/20 relative cursor-pointer">
                         <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} onClick={e=>e.target.value=null} className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"/>
                         <span className="text-4xl block mb-4">📂</span>
