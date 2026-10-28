@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v68)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v69)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -72,7 +72,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 68; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 69; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -719,7 +719,7 @@ function App() {
         const selected=rDates.filter(d=>chosen.has(dateDay(d)));
         if(showAllDailyRuns)return selected;
         const latest=new Map();
-        selected.forEach(d=>{const day=dateDay(d),previous=latest.get(day);if(previous===undefined||dateRun(d)>=dateRun(previous))latest.set(day,d);});
+        selected.forEach(d=>{const day=dateDay(d),previous=latest.get(day);if(previous===undefined||dateRun(d)<dateRun(previous))latest.set(day,d);});
         return selected.filter(d=>latest.get(dateDay(d))===d);
     },[rDates,rMode,rY,rM,nowYM,lastYM,showAllDailyRuns]);
 
