@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v66)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v67)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -72,7 +72,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 66; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 67; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -95,7 +95,7 @@ try {
 }
 
 // Storage codec V01: preserve every inventory value while reducing document size.
-const INVENTORY_FIELDS = ['RD','RI','DATES','STOCK','INC','AORDER'];
+const INVENTORY_FIELDS = ['RD','RI','DATES','STOCK','INC','AORDER','EXCEL_LAYOUT'];
 const INVENTORY_FORMAT = 'gzip-json-v1';
 const inventoryPayload = data => Object.fromEntries(INVENTORY_FIELDS.filter(k=>data[k]!==undefined).map(k=>[k,data[k]]));
 const inventoryToBase64 = bytes => {
@@ -404,6 +404,10 @@ const importRocketSheet=(sheet,styledSheet,theme,existingItems,existingDates)=>{
         const key=excelItemKey(name,option);if(seen.has(key))throw new Error('엑셀 상품 중복: '+name+' / '+option);seen.add(key);
         const previous=oldMap.get(key)||{};
         const item={...previous,name,option,skuId,excelActive:true,history:{...(previous.history||{})},excelDateStyles:{...(previous.excelDateStyles||{})}};
+        const nativeRow=styledSheet?.getRow(startRow+i+1);
+        item.excelRowHidden=!!nativeRow?.hidden;
+        item.excelRowHeight=nativeRow?.height||20;
+        item.excelNativeStyles=[0,1,2].map(c=>JSON.parse(JSON.stringify(styledSheet?.getCell(startRow+i+1,c+1)?.style||{})));
         item.excelStyles=[0,1,2].map(c=>readCellAppearance(styledSheet?.getCell(startRow+i+1,c+1),theme));
         p.dCols.forEach((col,ci)=>{
             const raw=row[col.index];let value='-';
@@ -421,6 +425,68 @@ const importRocketSheet=(sheet,styledSheet,theme,existingItems,existingDates)=>{
     existingItems.forEach(x=>{if(!seen.has(excelItemKey(x.name,x.option)))items.push({...x,excelActive:false});});
     return {items,dates:sortInventoryDates([...existingDates,...p.parsedDates])};
 };
+
+const captureSheetLayout=(sheet,styled,theme,rocket=false)=>{
+    if(!sheet||!styled)return null;
+    let p=parseSheetWithTimeline(sheet,3);if(!p?.dCols.length)p=parseSheetWithTimeline(sheet,1);
+    if(!p)return null;
+    const start=sheet['!ref']?XLSX.utils.decode_range(sheet['!ref']).s.r:0;
+    const headers=p.rows[p.hri]||[],headerRow=start+p.hri+1;
+    const rowInfo={};
+    for(let i=p.hri+1;i<p.rows.length;i++){
+        const row=p.rows[i];if(!row?.[0])continue;
+        const key=rocket?excelItemKey(row[0],row[1]):cleanSku(row[0]);
+        const native=styled.getRow(start+i+1);
+        rowInfo[key]={hidden:!!native.hidden,height:native.height||styled.properties.defaultRowHeight||20,outlineLevel:native.outlineLevel||0};
+    }
+    const widths={};p.dCols.forEach((c,i)=>{widths[p.parsedDates[i]]=styled.getColumn(c.index+1).width||9;});
+    return {name:styled.name,headerHeight:styled.getRow(headerRow).height||24,
+        widths:[1,2,3].map(c=>styled.getColumn(c).width||[26,18,14][c-1]),dateWidths:widths,rows:rowInfo,
+        headerStyles:[1,2,3,...p.dCols.map(c=>c.index+1)].slice(0,4).map(c=>readCellAppearance(styled.getCell(headerRow,c),theme)),
+        summaryBelow:styled.properties.outlineProperties?.summaryBelow!==false};
+};
+const applyExportLayout=(workbook,data,asOf=todayKst())=>{
+    const month=asOf.slice(0,7),layouts=data.EXCEL_LAYOUT||{};
+    const configure=(sheet,dates,meta,keys)=>{
+        if(!sheet)return;
+        if(meta?.name&&!workbook.worksheets.some(s=>s!==sheet&&s.name===meta.name))sheet.name=meta.name;
+        sheet.getRow(1).height=meta?.headerHeight||24;
+        if(meta?.widths)meta.widths.forEach((w,i)=>{sheet.getColumn(i+1).width=w;});
+        sheet.properties.outlineProperties={summaryRight:true,summaryBelow:meta?.summaryBelow!==false};
+        sheet.properties.outlineLevelCol=1;
+        let maxRowLevel=0;
+        keys.forEach((key,i)=>{const r=sheet.getRow(i+2),info=meta?.rows?.[key];
+            if(info){r.hidden=info.hidden;r.height=info.height;r.outlineLevel=info.outlineLevel;maxRowLevel=Math.max(maxRowLevel,info.outlineLevel);}
+        });
+        sheet.properties.outlineLevelRow=maxRowLevel;
+        dates.forEach((date,i)=>{
+            const col=sheet.getColumn(i+4),cell=sheet.getCell(1,i+4);
+            const key=String(date).slice(0,10),suffix=String(date).match(/\((\d+)\)/)?.[1];
+            if(/^\d{4}-\d{2}-\d{2}$/.test(key)){
+                cell.value=new Date(key+'T00:00:00Z');cell.numFmt='m/d'+(suffix?'" ('+suffix+')"':'');
+            }
+            col.width=Math.min(12,Math.max(8,meta?.dateWidths?.[date]||9));
+            const old=key.slice(0,7)<month;col.outlineLevel=old?1:0;col.hidden=old;
+            if(meta?.headerStyles?.[3]){const st=meta.headerStyles[3];cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+st.backgroundColor.slice(1)}};cell.font={...cell.font,color:{argb:'FF'+st.color.slice(1)}};}
+        });
+        [1,2,3].forEach(c=>{const st=meta?.headerStyles?.[c-1];if(st){const cell=sheet.getCell(1,c);cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+st.backgroundColor.slice(1)}};cell.font={...cell.font,color:{argb:'FF'+st.color.slice(1)}};}});
+        sheet.eachRow((row,n)=>{row.eachCell({includeEmpty:true},(cell,c)=>{
+            cell.alignment={...cell.alignment,vertical:'middle',horizontal:c>=4?'center':'left'};
+            if(n>1)cell.border={bottom:{style:'hair',color:{argb:'FFE2E8F0'}}};
+        });});
+        const lastOld=dates.reduce((last,d,i)=>String(d).slice(0,7)<month?i:last,-1);
+        sheet.views=[{state:'frozen',xSplit:3,ySplit:1,topLeftCell:lastOld>=0?sheet.getCell(2,lastOld+5).address:'D2',showOutlineSymbols:true}];
+    };
+    const items=(data.RI||[]).filter(x=>x.excelActive!==false);
+    configure(workbook.worksheets[0],data.RD||[],layouts.rocket,items.map(x=>excelItemKey(x.name,x.option)));
+    items.forEach((item,i)=>{const row=workbook.worksheets[0].getRow(i+2);if(item.excelRowHidden!==undefined)row.hidden=item.excelRowHidden;if(item.excelRowHeight)row.height=item.excelRowHeight;
+        (item.excelNativeStyles||[]).forEach((st,c)=>{if(st)row.getCell(c+1).style=JSON.parse(JSON.stringify(st));});
+    });
+    const stock=data.STOCK||{},keys=[...new Set([...(data.AORDER||[]),...Object.keys(stock)])].filter(k=>stock[k]);
+    configure(workbook.worksheets[1],data.DATES||[],layouts.argo,keys);
+    return workbook;
+};
+
 const buildInventoryWorkbook=async data=>{
     if(typeof ExcelJS==='undefined')throw new Error('엑셀 기능을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
     const wb=new ExcelJS.Workbook();wb.creator='Yorgo';wb.created=new Date();
@@ -442,7 +508,7 @@ const buildInventoryWorkbook=async data=>{
     [...new Set([...(data.AORDER||[]),...Object.keys(stock)])].filter(k=>stock[k]).forEach(k=>argo.addRow([k,'','',...ad.map((_,i)=>stock[k]?.[i]??0)]));setup(argo,[30,18,18,...ad.map(()=>15)],3);
     const shipping=wb.addWorksheet('출고 기록');shipping.addRow(['상품명','출고일','수량','운송방식','입고완료','추가정보(JSON)']);
     (data.INC||[]).forEach(x=>{const {sku,date,amount,type,isRegistered,...extra}=x;shipping.addRow([sku,date,amount,type,isRegistered?'완료':'대기',Object.keys(extra).length?JSON.stringify(extra):'']);});setup(shipping,[30,18,12,14,14,40],1);
-    return wb;
+    return applyExportLayout(wb,data);
 };
 
 function Dropdown({label,value,options,onChange}) {
@@ -920,7 +986,7 @@ function App() {
             if(useFirebase){const snap=await db.doc('yomimon_dashboard/inventory_master').get({source:'server'});if(!snap.exists)throw new Error('클라우드 원본이 없습니다.');data=await decodeInventoryDocument(snap.data());}
             const workbook=await buildInventoryWorkbook(data),buffer=await workbook.xlsx.writeBuffer();
             const url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const link=document.createElement('a');link.href=url;link.download='Yorgo_통합재고_'+todayKst()+'.xlsx';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-            notify('전체 날짜·상품 순서·색상을 포함한 엑셀을 다운로드했습니다.');
+            notify(data.EXCEL_LAYOUT?'원본 숨김 행·열 너비를 반영하고 지난달까지 접은 엑셀을 다운로드했습니다.':'날짜를 간단히 표시하고 지난달까지 접었습니다. 원본의 숨김 행까지 맞추려면 원본 엑셀을 한 번 다시 업로드해주세요.');
         }catch(error){notify('엑셀 다운로드 실패: '+error.message,'err');}finally{excelBusyRef.current=false;setExcelBusy(false);}
     };
     const handleUpload=e=>{
@@ -1041,7 +1107,10 @@ function App() {
                     }catch(e){console.warn("출고 시트 스킵:",e);}
                 }
 
-                const patch={RD:nRD,RI:nRI};
+                const patch={RD:nRD,RI:nRI,EXCEL_LAYOUT:{
+                    rocket:captureSheetLayout(sRocket,styledBook.worksheets[0],theme,true),
+                    argo:sArgo?captureSheetLayout(sArgo,styledBook.worksheets[1],theme):source.EXCEL_LAYOUT?.argo||null
+                }};
                 if(sArgo){patch.DATES=nAD;patch.STOCK=nAS;patch.AORDER=nAOrder;}
                 if(sDisp)patch.INC=nInc;
                 if(useFirebase){
