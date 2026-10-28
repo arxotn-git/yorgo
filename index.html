@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v64)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v65)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -60,6 +60,10 @@
             .fc2, .fc3 { position: static !important; box-shadow: none !important; border-right: none !important; }
             .fc3 { border-right: 1px solid #e2e8f0 !important; }
         }
+        .rocket-grid tbody td {font-weight:400;line-height:1.55;font-variant-numeric:tabular-nums;}
+        .rocket-grid tbody td.fc1 {font-weight:500;}
+        .rocket-grid tbody td.fc3 {color:#64748B;}
+        .rocket-grid tbody tr:hover td {filter:brightness(0.985);}
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -68,7 +72,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 64; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 65; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -335,6 +339,22 @@ const parseSheetWithTimeline = (sheet, skipCols=0) => {
 // Spreadsheet appearance is authoritative; defaults apply only before an Excel import.
 const excelItemKey=(name,option)=>JSON.stringify([String(name||'').trim(),String(option||'').trim()]);
 const sortInventoryDates=dates=>[...new Set(dates)].sort((a,b)=>a.slice(0,10).localeCompare(b.slice(0,10)) || (Number(a.match(/\((\d+)\)/)?.[1]||1)-Number(b.match(/\((\d+)\)/)?.[1]||1)));
+
+// Web appearance is separate from Excel data and export styles.
+const normalizeWebColor=value=>/^#[0-9A-F]{6}$/i.test(value||'')?value.toUpperCase():null;
+const softExcelColor=value=>{
+    const hex=normalizeWebColor(value);if(!hex||hex==='#FFFFFF')return '#FFFFFF';
+    const [r,g,b]=hex.slice(1).match(/../g).map(v=>parseInt(v,16));
+    if(Math.max(r,g,b)-Math.min(r,g,b)<35)return '#F1F5F9';
+    if(b>r*1.25&&b>g*1.1)return '#EFF6FF';
+    if(g>r*1.15&&g>b*1.1)return '#F0FDF4';
+    if(r>180&&g>150&&b<150)return '#FFFBEB';
+    if(g>r*1.15&&b>r*1.15)return '#ECFEFF';
+    if(r>g*1.2&&b>g*1.2)return '#FAF5FF';
+    if(r>g*1.3&&r>b*1.2)return '#FFF1F2';
+    return '#FFF7ED';
+};
+
 const itemCellStyle=(item,index,date)=>date?(item.excelDateStyles?.[date]||{}):(item.excelStyles?.[index]||{});
 const defaultNameStyle=item=>{
     const cat=getBookToyCat(item.name);
@@ -485,6 +505,35 @@ function App() {
     const [aOrder,setAOrder]=useState([]); 
     const [stockRun,setStockRun]=useState({phase:"idle",message:"",details:[]});
     
+
+    const [webColorMap,setWebColorMap]=useState(()=>{try{return JSON.parse(localStorage.getItem('yorgo_web_colors_v1')||'{}');}catch(e){return {};}});
+    const [showColors,setShowColors]=useState(false);
+    const [draftColors,setDraftColors]=useState({});
+    const [colorSaving,setColorSaving]=useState(false);
+    const excelColors=useMemo(()=>{
+        const found=new Set();
+        rItems.forEach(item=>[...(item.excelStyles||[]),...Object.values(item.excelDateStyles||{})].forEach(style=>{
+            const hex=normalizeWebColor(style?.backgroundColor);if(hex&&hex!=='#FFFFFF')found.add(hex);
+        }));
+        return [...found].sort();
+    },[rItems]);
+    const displayCellStyle=(item,index,date)=>{
+        const source=itemCellStyle(item,index,date),hex=normalizeWebColor(source.backgroundColor);
+        return {...(hex?{backgroundColor:normalizeWebColor(webColorMap[hex])||softExcelColor(hex)}:{}),color:'#334155'};
+    };
+    const openColors=()=>{setDraftColors({...webColorMap});setShowColors(v=>!v);};
+    const saveColors=async()=>{
+        setColorSaving(true);
+        try{
+            const clean=Object.fromEntries(Object.entries(draftColors).filter(([k,v])=>normalizeWebColor(k)&&normalizeWebColor(v)).map(([k,v])=>[k.toUpperCase(),v.toUpperCase()]));
+            if(useFirebase)await db.doc('yomimon_dashboard/inventory_master').update({webColorMap:clean});
+            setWebColorMap(clean);
+            try{localStorage.setItem('yorgo_web_colors_v1',JSON.stringify(clean));}catch(e){}
+            setShowColors(false);notify('화면 색상 설정을 저장했습니다.');
+        }catch(error){notify('색상 설정 저장 실패: '+error.message,'err');}
+        finally{setColorSaving(false);}
+    };
+
     // 🔥 전역 검색어 State (탭 변경시에도 검색어 유지)
     const [srch,setSrch]=useState(""); 
 
@@ -514,6 +563,7 @@ function App() {
             if (docSnap.exists) {
                 const d = await decodeInventoryDocument(docSnap.data());
                 if(disposed||sequence!==snapshotSequence)return;
+                setWebColorMap(d.webColorMap||{});
                 if (d.DATES?.length) setDbDates(d.DATES);
                 if (d.STOCK && Object.keys(d.STOCK).length) setDbStock(mergeStockHistory(d.STOCK));
                 if (d.INC) setDbInc(d.INC);
@@ -1157,6 +1207,7 @@ function App() {
                                             <input type="checkbox" checked={rShowZero} onChange={e=>setRShowZero(e.target.checked)} className="rounded border-slate-300 text-blue-600 w-3.5 h-3.5 cursor-pointer"/>
                                             <span>재고 0개도 보기</span>
                                         </label>
+                                        <button type="button" onClick={openColors} aria-expanded={showColors} className="px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">색상 설정</button>
                                         <button type="button" onClick={()=>setShowAllDailyRuns(v=>!v)} aria-pressed={showAllDailyRuns} className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all ${showAllDailyRuns?'bg-blue-50 border-blue-300 text-blue-700':'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{showAllDailyRuns?'같은 날짜 기록 접기':'같은 날짜 기록 펼치기'}</button>
                                         <ModeBtns mode={rMode} setMode={setRMode} color="blue"/>
                                         <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
@@ -1168,6 +1219,28 @@ function App() {
                                 </div>
                             </div>
 
+
+                            {showColors&&<section aria-label="엑셀 색상별 웹 표시 설정" className="bg-white rounded-2xl border border-slate-200 p-5">
+                                <h3 className="text-base font-semibold text-slate-800">엑셀 색상별 웹 표시</h3>
+                                <p className="mt-1 text-sm text-slate-500">엑셀의 배경색마다 웹에서 보여줄 색을 지정하세요. 원본 엑셀과 다운로드 색상은 유지됩니다.</p>
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                    {excelColors.map(hex=><div key={hex} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3">
+                                        <span className="h-8 w-8 shrink-0 rounded-lg border border-slate-200" style={{backgroundColor:hex}}/>
+                                        <span className="text-xs font-mono text-slate-500">{hex}</span>
+                                        <span className="text-slate-400">→</span>
+                                        <input type="color" aria-label={hex+' 웹 배경색'} value={draftColors[hex]||softExcelColor(hex)} onChange={e=>setDraftColors(v=>({...v,[hex]:e.target.value.toUpperCase()}))} className="h-8 w-10 cursor-pointer rounded"/>
+                                        <span className="rounded-md px-2 py-1 text-sm text-slate-700" style={{backgroundColor:draftColors[hex]||softExcelColor(hex)}}>재고 123</span>
+                                        <button type="button" onClick={()=>setDraftColors(v=>{const next={...v};delete next[hex];return next;})} className="ml-auto text-xs text-slate-500 underline">자동</button>
+                                    </div>)}
+                                </div>
+                                {!excelColors.length&&<p className="mt-3 text-sm text-slate-500">엑셀에서 불러온 배경색이 없습니다.</p>}
+                                <div className="mt-4 flex gap-2">
+                                    <button type="button" onClick={saveColors} disabled={colorSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{colorSaving?'저장 중...':'설정 저장'}</button>
+                                    <button type="button" onClick={()=>setDraftColors({})} disabled={colorSaving} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600">모두 연한 기본색으로</button>
+                                    <button type="button" onClick={()=>setShowColors(false)} disabled={colorSaving} className="rounded-lg px-4 py-2 text-sm text-slate-500">닫기</button>
+                                </div>
+                            </section>}
+
                             {stockRun.phase!=="idle"&&<div className={`rounded-2xl border p-4 text-sm font-bold ${stockRun.phase==="error"?"bg-red-50 border-red-200 text-red-800":stockRun.phase==="login"?"bg-amber-50 border-amber-200 text-amber-900":"bg-blue-50 border-blue-200 text-blue-900"}`}><div>{stockRun.message}</div>{stockRun.phase==="login"&&<button onClick={handleStockFetch} className="mt-2 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-extrabold">재시도</button>}{stockRun.details.map((d,i)=><div key={i} className="mt-1 text-xs whitespace-pre-wrap">• {d}</div>)}{stockRun.phase==="error"&&<div className="mt-2 text-xs font-normal">확장 프로그램이 없으면 설치 후 이 페이지를 새로고침하세요. 로그인 정보나 비밀값은 이 페이지에 입력하지 않습니다.</div>}</div>}
                             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex-grow freeze-wrap">
                                 {filtRI.length===0?(
@@ -1175,7 +1248,7 @@ function App() {
                                         {!rShowZero&&<button onClick={()=>setRShowZero(true)} className="mt-3 text-xs text-blue-600 underline font-bold cursor-pointer">→ 재고 0개 상품도 표시하기</button>}
                                     </div>
                                 ):(
-                                    <table className="text-left border-collapse" style={{tableLayout:"fixed",width:`${380+Math.max(1,visRD.length)*80}px`,minWidth:`${380+Math.max(1,visRD.length)*80}px`}}>
+                                    <table className="rocket-grid text-left border-collapse" style={{tableLayout:"fixed",width:`${380+Math.max(1,visRD.length)*80}px`,minWidth:`${380+Math.max(1,visRD.length)*80}px`}}>
                                         <colgroup>
                                             <col style={{width:"var(--col-name)"}}/><col style={{width:"var(--col-opt)"}}/><col style={{width:"var(--col-sku)"}}/>
                                             {visRD.length===0&&<col style={{width:"150px"}}/>}
@@ -1191,7 +1264,7 @@ function App() {
                                         <tbody className="text-sm">
                                             {filtRI.map((item,idx)=>{
                                                 const isNew=idx>0&&filtRI[idx-1].name!==item.name;
-                                                const rowCls=`hover:bg-blue-50/40 transition-colors ${isNew?"border-t-[3px] border-blue-500":"border-t border-slate-100"}`;
+                                                const rowCls=`hover:bg-blue-50/40 transition-colors ${isNew?"border-t-2 border-slate-200":"border-t border-slate-100"}`;
                                                 const bgNew="bg-white";
                                                 const txtNew="text-slate-800";
                                                 const cat=getBookToyCat(item.name);
@@ -1200,15 +1273,15 @@ function App() {
                                                 const nameBorder=cat==="book"?"border-l-4 border-emerald-400":cat==="toy"?"border-l-4 border-orange-400":"border-l-4 border-transparent";
                                                 return(
                                                     <tr key={idx} className={rowCls}>
-                                                        <td style={item.excelStyles?{...itemCellStyle(item,0),borderLeftColor:itemCellStyle(item,0).backgroundColor}:undefined} className={`py-4 px-5 font-extrabold fc1 whitespace-nowrap overflow-hidden text-ellipsis ${nameBg} ${nameTxt} ${nameBorder}`}>{item.name}</td>
-                                                        <td style={itemCellStyle(item,1)} className={`py-4 px-5 text-slate-500 fc2 whitespace-nowrap overflow-hidden text-ellipsis ${bgNew}`}>{item.option||"-"}</td>
-                                                        <td style={itemCellStyle(item,2)} className={`py-4 px-5 font-mono text-slate-400 text-xs fc3 whitespace-nowrap ${bgNew}`}>{item.skuId||"-"}</td>
+                                                        <td style={item.excelStyles?{...displayCellStyle(item,0),borderLeftColor:displayCellStyle(item,0).backgroundColor}:undefined} className={`py-4 px-5 font-extrabold fc1 whitespace-nowrap overflow-hidden text-ellipsis ${nameBg} ${nameTxt} ${nameBorder}`}>{item.name}</td>
+                                                        <td style={displayCellStyle(item,1)} className={`py-4 px-5 text-slate-500 fc2 whitespace-nowrap overflow-hidden text-ellipsis ${bgNew}`}>{item.option||"-"}</td>
+                                                        <td style={displayCellStyle(item,2)} className={`py-4 px-5 font-mono text-slate-400 text-xs fc3 whitespace-nowrap ${bgNew}`}>{item.skuId||"-"}</td>
                                                         {visRD.length===0&&<td className={bgNew}></td>}
                                                         {visRD.map((d,i)=>{
                                                             const v=item.history[d];const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
                                                             const wkStart=isWeekStartDate(visRD,i);
                                                             return(
-                                                                <td key={i} style={itemCellStyle(item,0,d)} className={`py-4 px-4 text-center font-bold ${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
+                                                                <td key={i} style={displayCellStyle(item,0,d)} className={`py-4 px-4 text-center font-bold ${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
                                                                     {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
                                                                 </td>
                                                             );
