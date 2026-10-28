@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v67)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v68)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -72,7 +72,7 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 67; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 68; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -466,7 +466,10 @@ const applyExportLayout=(workbook,data,asOf=todayKst())=>{
                 cell.value=new Date(key+'T00:00:00Z');cell.numFmt='m/d'+(suffix?'" ('+suffix+')"':'');
             }
             col.width=Math.min(12,Math.max(8,meta?.dateWidths?.[date]||9));
-            const old=key.slice(0,7)<month;col.outlineLevel=old?1:0;col.hidden=old;
+            const old=key.slice(0,7)<month;
+            const isLastOfMonth=i===dates.length-1||String(dates[i+1]).slice(0,7)!==key.slice(0,7);
+            col.outlineLevel=isLastOfMonth?0:1;col.hidden=old;
+            Object.defineProperty(col,'collapsed',{value:old&&isLastOfMonth,configurable:true});
             if(meta?.headerStyles?.[3]){const st=meta.headerStyles[3];cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+st.backgroundColor.slice(1)}};cell.font={...cell.font,color:{argb:'FF'+st.color.slice(1)}};}
         });
         [1,2,3].forEach(c=>{const st=meta?.headerStyles?.[c-1];if(st){const cell=sheet.getCell(1,c);cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+st.backgroundColor.slice(1)}};cell.font={...cell.font,color:{argb:'FF'+st.color.slice(1)}};}});
@@ -481,6 +484,10 @@ const applyExportLayout=(workbook,data,asOf=todayKst())=>{
     configure(workbook.worksheets[0],data.RD||[],layouts.rocket,items.map(x=>excelItemKey(x.name,x.option)));
     items.forEach((item,i)=>{const row=workbook.worksheets[0].getRow(i+2);if(item.excelRowHidden!==undefined)row.hidden=item.excelRowHidden;if(item.excelRowHeight)row.height=item.excelRowHeight;
         (item.excelNativeStyles||[]).forEach((st,c)=>{if(st)row.getCell(c+1).style=JSON.parse(JSON.stringify(st));});
+        (item.excelStyles||[]).forEach((st,c)=>{if(!st)return;const cell=row.getCell(c+1);
+            if(/^#[0-9A-F]{6}$/i.test(st.backgroundColor||''))cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+st.backgroundColor.slice(1)}};
+            if(/^#[0-9A-F]{6}$/i.test(st.color||''))cell.font={...cell.font,color:{argb:'FF'+st.color.slice(1)}};
+        });
     });
     const stock=data.STOCK||{},keys=[...new Set([...(data.AORDER||[]),...Object.keys(stock)])].filter(k=>stock[k]);
     configure(workbook.worksheets[1],data.DATES||[],layouts.argo,keys);
