@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v69)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v70)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -72,7 +72,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 69; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 70;
+const APP_UPDATED_AT = "2026-10-29 08:41"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -222,7 +223,7 @@ const getBookToyCat = name => {
 // 매주 첫 영업일(직전 날짜와 1일 초과 차이나는 날짜=주말/휴일 이후 첫 날) 색상 구분용
 const isWeekStartDate = (dates, i) => {
     if(i<=0) return false;
-    const diffDays = Math.round((new Date(dates[i]) - new Date(dates[i-1])) / 86400000);
+    const diffDays = Math.round((new Date(String(dates[i]).slice(0,10)+"T00:00:00Z") - new Date(String(dates[i-1]).slice(0,10)+"T00:00:00Z")) / 86400000);
     return diffDays > 1;
 };
 
@@ -488,6 +489,11 @@ const applyExportLayout=(workbook,data,asOf=todayKst())=>{
             if(/^#[0-9A-F]{6}$/i.test(st.backgroundColor||''))cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+st.backgroundColor.slice(1)}};
             if(/^#[0-9A-F]{6}$/i.test(st.color||''))cell.font={...cell.font,color:{argb:'FF'+st.color.slice(1)}};
         });
+    });
+    // 첫 영업일은 로켓 시트의 날짜 열 전체에 오렌지색을 적용한다.
+    (data.RD||[]).forEach((date,i)=>{if(!isWeekStartDate(data.RD,i))return;
+        const sheet=workbook.worksheets[0], column=i+4;
+        for(let row=1;row<=sheet.rowCount;row++)sheet.getCell(row,column).fill={type:'pattern',pattern:'solid',fgColor:{argb:row===1?'FFFFEDD5':'FFFFF1DF'}};
     });
     const stock=data.STOCK||{},keys=[...new Set([...(data.AORDER||[]),...Object.keys(stock)])].filter(k=>stock[k]);
     configure(workbook.worksheets[1],data.DATES||[],layouts.argo,keys);
@@ -1206,7 +1212,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <h1 onClick={()=>window.location.reload()} title="클릭하면 새로고침" className="text-2xl font-bold cursor-pointer select-none">로켓배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1>
+                    <div><h1 onClick={()=>window.location.reload()} title="클릭하면 새로고침" className="text-2xl font-bold cursor-pointer select-none">로켓배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1><p className="mt-1 text-xs font-normal text-white">버전 업데이트: {APP_UPDATED_AT}</p></div>
                     <div className="flex items-center gap-2">
                         <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("연동") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                             {dbSync}
@@ -1269,7 +1275,7 @@ function App() {
                     ):(
                         <>
                             <div className="flex flex-col xl:flex-row xl:items-center gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
-                                <div className="flex-shrink-0"><h2 className="font-extrabold text-slate-800 text-xl px-2 whitespace-nowrap flex items-center gap-2 flex-shrink-0">🚀 로켓배송 실시간 상황판 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품</span></h2><p className="px-2 mt-1.5 text-xs font-medium text-slate-500">재고 리스트 최종 업데이트: {lastSyncedAt?fmtSyncTime(lastSyncedAt):"확인 중"}</p></div>
+                                <div className="flex-shrink-0"><h2 className="font-extrabold text-slate-800 text-xl px-2 whitespace-nowrap flex items-center gap-2 flex-shrink-0">🚀 로켓배송 실시간 상황판 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{filtRI.length}개 상품</span></h2><p className="px-2 mt-1.5 text-xs font-medium text-slate-500">재고 업데이트: {lastSyncedAt?fmtSyncTime(lastSyncedAt):"확인 중"}</p></div>
 
                                 <div className="flex flex-col xl:flex-row xl:items-center gap-2 flex-1 min-w-0">
                                     {/* 검색 입력창: 남은 가로 공간만큼 확장 */}
