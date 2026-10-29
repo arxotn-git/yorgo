@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v70)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v71)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -72,8 +72,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 70;
-const APP_UPDATED_AT = "2026-10-29 08:41"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 71;
+const APP_UPDATED_AT = "2026-10-29 11:11"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -697,7 +697,7 @@ function App() {
     },[dbDates]);
 
     // ── 로켓 필터 ──
-    const [rMode,setRMode]=useState("15"); 
+    const [rMode,setRMode]=useState("10"); 
     const [rShowZero,setRShowZero]=useState(false); 
     const rYears=useMemo(()=>rDates.length?[...new Set(rDates.map(d=>d.slice(0,4)))].sort().reverse():[CUR_Y],[rDates,CUR_Y]);
     const [rY,setRY]=useState(()=>rYears[0]||CUR_Y);
@@ -1212,7 +1212,7 @@ function App() {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
-                    <div><h1 onClick={()=>window.location.reload()} title="클릭하면 새로고침" className="text-2xl font-bold cursor-pointer select-none">로켓배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1><p className="mt-1 text-xs font-normal text-white">버전 업데이트: {APP_UPDATED_AT}</p></div>
+                    <div><h1 onClick={()=>window.location.reload()} title="클릭하면 새로고침" className="text-2xl font-bold cursor-pointer select-none">로켓배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1><p className="mt-1 text-xs font-normal text-slate-400">버전 업데이트: {APP_UPDATED_AT}</p></div>
                     <div className="flex items-center gap-2">
                         <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("연동") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                             {dbSync}
