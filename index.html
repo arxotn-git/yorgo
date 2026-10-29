@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v72)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v73)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -73,8 +73,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 72;
-const APP_UPDATED_AT = "2026-10-29 11:42"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 73;
+const APP_UPDATED_AT = "2026-10-29 12:52"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -332,7 +332,13 @@ const parseSheetWithTimeline = (sheet, skipCols=0) => {
             }
             lastMonth = p.m;
         }
-        const dateStr = `${currentYear}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}${p.suffix}`;
+        // Excel date cells retain (2), (3) in the display format rather than their numeric value.
+        const range=sheet['!ref']?XLSX.utils.decode_range(sheet['!ref']):{s:{r:0,c:0}};
+        const headerCell=sheet[XLSX.utils.encode_cell({r:range.s.r+hri,c:range.s.c+i})];
+        const shown=headerCell?XLSX.utils.format_cell(headerCell):'';
+        const runSuffix=String(shown).match(/\s*\((\d+)\)\s*$/);
+        const suffix=p.suffix||(runSuffix?' ('+runSuffix[1]+')':'');
+        const dateStr = `${currentYear}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}${suffix}`;
         dCols.unshift({ index: i, label: dateStr });
     }
     return { rows, hri, dCols, parsedDates: dCols.map(c=>c.label) };
