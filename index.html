@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v71)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v72)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -60,6 +60,7 @@
             .fc2, .fc3 { position: static !important; box-shadow: none !important; border-right: none !important; }
             .fc3 { border-right: 1px solid #e2e8f0 !important; }
         }
+        .rocket-grid thead th {font-size:0.875rem;font-weight:700;}
         .rocket-grid tbody td {font-weight:500;line-height:1.55;font-variant-numeric:tabular-nums;}
         .rocket-grid tbody td.fc1 {font-weight:600;}
         .rocket-grid tbody td.fc3 {color:#64748B;}
@@ -72,8 +73,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 71;
-const APP_UPDATED_AT = "2026-10-29 11:11"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 72;
+const APP_UPDATED_AT = "2026-10-29 11:42"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
