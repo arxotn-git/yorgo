@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v87)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v88)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -76,8 +76,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 87;
-const APP_UPDATED_AT = "2026-10-30 22:22"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 88;
+const APP_UPDATED_AT = "2026-10-30 22:50"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -593,13 +593,14 @@ function Dropdown({label,value,options,onChange}) {
     );
 }
 
+const adsLatestDate=(today=todayKst())=>new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10);
 const adsRange=(preset,today=todayKst())=>{
  const d=new Date(today+'T00:00:00Z'),day=n=>new Date(d.getTime()+n*86400000).toISOString().slice(0,10);
- if(preset==='today')return [today,today];if(preset==='yesterday')return [day(-1),day(-1)];
- if(preset==='week')return [day(-7),day(-1)];if(preset==='month')return [today.slice(0,7)+'-01',today];
+ if(preset==='yesterday')return [day(-1),day(-1)];
+ if(preset==='week')return [day(-7),day(-1)];if(preset==='month')return [today.slice(0,7)+'-01',day(-1)];
  return [new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-1,1)).toISOString().slice(0,10),new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),0)).toISOString().slice(0,10)];
 };
-const adsDates=(start,end)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end||end>todayKst())throw Error('조회 기간을 확인해주세요.');const out=[];for(let d=new Date(start+'T00:00:00Z');d<=new Date(end+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1)){if(out.length>=93)throw Error('한 번에 최대 93일까지 조회할 수 있습니다.');out.push(d.toISOString().slice(0,10));}return out;};
+const adsDates=(start,end)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end||end>adsLatestDate())throw Error('조회 기간을 확인해주세요.');const out=[];for(let d=new Date(start+'T00:00:00Z');d<=new Date(end+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1)){if(out.length>=93)throw Error('한 번에 최대 93일까지 조회할 수 있습니다.');out.push(d.toISOString().slice(0,10));}return out;};
 // Parse observed Coupang custom-report columns; never reinterpret total conversion as indirect.
 const parseConversionReport = matrix => {
  const norm=x=>String(x??'').replace(/\s/g,'');
@@ -624,6 +625,58 @@ const parseConversionReport = matrix => {
  });
  if(!Object.keys(dates).length)throw Error('읽을 수 있는 전환 자료가 없습니다.');
  return Object.fromEntries(Object.entries(dates).map(([date,map])=>[date,{rows:Object.values(map),basis:'14-day-attribution',source:'Coupang Ads > 맞춤 보고서 > 맞춤 보고서 > 일별',checkedAt:new Date().toISOString()}]));
+};
+
+const adsPeriodChunks=dates=>{
+ const out=[];for(const date of dates){const last=out.at(-1);let boundary='';if(last){const [y,m,d]=last[0].split('-').map(Number),monthLast=new Date(Date.UTC(y,m+1,0)).getUTCDate();boundary=new Date(Date.UTC(y,m,Math.min(d,monthLast))).toISOString().slice(0,10);}if(!last||date>=boundary)out.push([date]);else last.push(date);}return out;
+};
+const adsExportMatrix=exported=>{
+ if(!exported?.complete||typeof exported.base64!=='string'||exported.size<100||exported.size>16000000)throw Error('엑셀 원본 응답을 확인해주세요.');
+ const bytes=Uint8Array.from(atob(exported.base64),c=>c.charCodeAt(0));if(bytes.length!==exported.size)throw Error('엑셀 파일 일부가 누락됐습니다.');
+ const book=XLSX.read(bytes,{type:'array'});if(book.SheetNames.length!==1)throw Error('보고서 시트 구성을 확인해주세요.');
+ return XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]],{header:1,defval:null});
+};
+const adsParsePeriod=(matrix,dates,kind,checkedAt=new Date().toISOString())=>{
+ const norm=v=>String(v??'').replace(/\s/g,''),wanted=new Set(dates),nonempty=r=>r.some(v=>v!=null&&v!=='');
+ const integer=(v,label)=>{const n=typeof v==='number'?v:Number(String(v??'').replace(/[,\s원]/g,''));if(v==null||v===''||!Number.isSafeInteger(n)||n<0)throw Error(label+' 수치를 확인해주세요.');return n;};
+ const iso=raw=>{const s=String(raw??'').trim().replace(/\.0$/,'');if(/^\d{8}$/.test(s))return s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6);const p=s.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})\D*$/);return p?[p[1],p[2].padStart(2,'0'),p[3].padStart(2,'0')].join('-'):s;};
+ if(!dates.length||new Set(dates).size!==dates.length)throw Error('저장 기간이 잘못됐습니다.');
+ if(kind==='conversion'){
+  const header=matrix[0]?.map(norm)||[];for(const name of ['날짜','캠페인 이름','판매방식','클릭수',...['직접','간접'].flatMap(m=>[m+' 주문수 (14일)',m+' 판매 수량 (14일)',m+' 전환 매출액 (14일)(원)'])])if(!header.includes(norm(name)))throw Error('맞춤보고서 열 누락: '+name);
+  const parsed=matrix.slice(1).some(nonempty)?parseConversionReport(matrix):{};
+  for(const [date,day] of Object.entries(parsed)){if(!wanted.has(date))throw Error('선택 기간 밖의 전환 자료가 포함됐습니다: '+date);for(const row of day.rows){integer(row.clicks,'클릭');for(const m of ['direct','indirect'])for(const k of ['orders','units'])integer(row[m][k],m+k);}}
+  // Missing activity dates are zero only after a complete all-campaign export.
+  return Object.fromEntries(dates.map(date=>[date,{...(parsed[date]||{rows:[],basis:'14-day-attribution',source:'Coupang Ads > 맞춤 보고서 > 맞춤 보고서 > 일별'}),date,complete:true,checkedAt,collection:'period-excel'}]));
+ }
+ const head=matrix[0]?.map(norm)||[],col=name=>{const i=head.indexOf(norm(name));if(i<0)throw Error('정산 보고서 열 누락: '+name);return i;};
+ const c={date:col('날짜'),domain:col('배송유형'),tax:col('부가세 유형'),id:col('캠페인 ID'),name:col('캠페인명'),net:col('청구 가능 광고비'),vat:col('부가가치세'),total:col('청구금액(+부가가치세)')};
+ const supplier=kind==='supplier',domain=supplier?'RETAIL':'SELLER',days=Object.fromEntries(dates.map(date=>[date,{date,supplier,complete:true,total:0,net:0,vat:0,rows:[],campaignVatBasis:'allocated-within-source-tax-group',source:'일별 광고비 정산내역 보고서 > 청구금액(+부가가치세)',collection:'period-excel',checkedAt}]));
+ let overall=null,group=null;const groups=[];
+ for(const r of matrix.slice(1).filter(nonempty)){
+  if(norm(r[c.date])==='전체'){
+   if(overall||norm(r[c.domain])!==domain)throw Error('정산 전체 행·판매방식 오류');overall={net:integer(r[c.net],'전체 청구 가능 광고비'),vat:integer(r[c.vat],'전체 부가세'),total:integer(r[c.total],'전체 청구액')};continue;
+  }
+  if(r[c.date]!=null&&r[c.date]!==''){
+   const date=iso(r[c.date]);if(!wanted.has(date)||norm(r[c.domain])!==domain)throw Error('선택 기간·판매방식과 다른 정산 행: '+date);
+   group={date,tax:String(r[c.tax]||''),net:integer(r[c.net],'과세 그룹 광고비'),vat:integer(r[c.vat],'과세 그룹 부가세'),total:integer(r[c.total],'과세 그룹 청구액'),rows:[]};if(group.net+group.vat!==group.total)throw Error('과세 그룹 부가세 합계 불일치');groups.push(group);
+   const day=days[date];for(const k of ['net','vat','total'])day[k]+=group[k];
+  }else{
+   const name=String(r[c.name]||'').trim();if(!group||!name)throw Error('정산 캠페인 그룹·이름 누락');
+   const row={name,supplier,campaignId:String(r[c.id]??''),net:integer(r[c.net],'캠페인 광고비'),spend:r[c.total]==null||r[c.total]===''?null:integer(r[c.total],'캠페인 청구액')};group.rows.push(row);days[group.date].rows.push(row);
+  }
+ }
+ if(!overall||overall.net+overall.vat!==overall.total)throw Error('정산 전체 청구액 검증 실패');
+ for(const k of ['net','vat','total'])if(Object.values(days).reduce((s,d)=>s+d[k],0)!==overall[k])throw Error('기간 상세 합계와 전체 청구액 불일치: '+k);
+ for(const g of groups){
+  if(g.rows.reduce((s,r)=>s+r.net,0)!==g.net)throw Error('캠페인별 청구 가능 광고비 합계 불일치');
+  const pending=g.rows.filter(r=>r.spend===null),remaining=g.vat-g.rows.filter(r=>r.spend!==null).reduce((s,r)=>s+r.spend-r.net,0),weight=pending.reduce((s,r)=>s+r.net,0);
+  if(remaining<0||(!weight&&remaining))throw Error('부가세 배분 기준 오류');
+  let assigned=0;const portions=pending.map((r,i)=>{const n=BigInt(r.net)*BigInt(remaining),d=BigInt(weight||1),v=Number(n/d);assigned+=v;return {r,i,v,remainder:n%d};});
+  portions.sort((a,b)=>a.remainder===b.remainder?a.i-b.i:a.remainder>b.remainder?-1:1);for(let n=0;n<remaining-assigned;n++)portions[n].v++;
+  for(const p of portions)Object.assign(p.r,{spend:p.r.net+p.v,vat:p.v,spendBasis:'allocated-vat',taxCode:g.tax});
+  if(g.rows.some(r=>r.spend<r.net)||g.rows.reduce((s,r)=>s+r.spend,0)!==g.total)throw Error('부가세 포함 캠페인 합계 불일치');
+ }
+ return days;
 };
 
 const adsAggregate=rows=>{
@@ -679,7 +732,7 @@ function AdsProgress({job,busy}){
 function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCancel,onReportImport}){
  const [range,setRange]=useState(()=>adsRange('yesterday')),[source,setSource]=useState('all'),[mode,setMode]=useState('campaign'),[query,setQuery]=useState('');
  const [conversionMode,setConversionMode]=useState('total');
- const [sort,setSort]=useState({key:'spend',direction:'desc'}),[showTab,setShowTab]=useState(true);
+ const [sort,setSort]=useState({key:'spend',direction:'desc'}),[showTab,setShowTab]=useState(false);
  const conversionLabel=conversionMode==='total'?'총':conversionMode==='indirect'?'간접':'직접';
  const conversionDescription=conversionMode==='total'?'총 전환 (직접+간접)':conversionLabel+' 전환';
  const [selectedPreset,setSelectedPreset]=useState('yesterday');
@@ -699,10 +752,11 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const show=n=>n==null?'미수집':Number(n).toLocaleString('ko-KR');const roas=r=>r.sales==null||r.spend==null?'—':r.spend>0?(r.sales/r.spend*100).toFixed(2)+'%':'—';
  const cvr=r=>r.orders==null||!r.clicks?'—':(r.orders/r.clicks*100).toFixed(2)+'%';
  return <section className="m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">{conversionDescription} · 14일 기여 기준</p></div><button disabled={busy} onClick={()=>onSync(range,{showTab})} className="bg-blue-600 text-white rounded-xl px-5 py-2 font-bold disabled:opacity-50">{busy?'광고 수집 중…':'선택 기간 수집 / 새로고침'}</button>{busy&&<button type="button" onClick={onCancel} className="border border-red-300 rounded-xl px-5 py-2 font-bold text-red-700">수집 중단</button>}</div>
- <div className="flex flex-wrap items-center gap-3"><label className="inline-flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" checked={showTab} disabled={busy} onChange={e=>setShowTab(e.target.checked)}/>수집 화면 표시 (권장)</label><div role="group" aria-label="전환 유형" className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">{[['total','총 전환 (직접+간접)'],['direct','직접 전환'],['indirect','간접 전환']].map(([key,label])=><button key={key} type="button" aria-pressed={conversionMode===key} onClick={()=>setConversionMode(key)} className={`rounded-lg px-5 py-2 font-bold text-sm ${conversionMode===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><label className="border rounded-lg px-4 py-2 text-sm cursor-pointer bg-white">맞춤보고서 엑셀 반영<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onReportImport(file);e.target.value='';}}/></label></div>
+ <div className="flex flex-wrap items-center gap-3"><label className="inline-flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" checked={showTab} disabled={busy} onChange={e=>setShowTab(e.target.checked)}/>수집 화면 표시 (선택)</label><div role="group" aria-label="전환 유형" className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">{[['total','총 전환 (직접+간접)'],['direct','직접 전환'],['indirect','간접 전환']].map(([key,label])=><button key={key} type="button" aria-pressed={conversionMode===key} onClick={()=>setConversionMode(key)} className={`rounded-lg px-5 py-2 font-bold text-sm ${conversionMode===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><label className="border rounded-lg px-4 py-2 text-sm cursor-pointer bg-white">맞춤보고서 엑셀 반영<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onReportImport(file);e.target.value='';}}/></label></div>
+ <p className="text-xs text-slate-500">선택 기간을 보고서별로 한 번에 조회합니다. 수집 탭은 하나만 재사용하고 완료·오류·중단 시 닫습니다. 한 달을 넘는 기간은 구간을 나눕니다. 당일 자료는 제공되지 않아 달력에서는 어제까지 선택할 수 있습니다.</p>
  <p className="text-sm text-blue-800 font-semibold">총 전환 = 직접 전환 + 간접 전환 · 쿠팡 대시보드 전환 매출은 같은 기간·판매방식의 총 전환과 비교하세요.</p>
  <p className="text-xs text-slate-500">출처: 쿠팡 광고센터 → 광고보고서 → 맞춤 보고서 → 맞춤 보고서 → 일별. 현재 <strong>{conversionDescription}의 주문수·판매수량·전환 매출액(14일)</strong>입니다. 광고 클릭에 귀속된 실적이며 실제 구매일 기준 실적은 아닙니다.</p>
- <div className="flex flex-wrap gap-2">{[['today','오늘'],['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달']].map(([key,label])=><button key={key} onClick={()=>{setRange(adsRange(key));setSelectedPreset(key);}} aria-pressed={selectedPreset===key} className={`border rounded-lg px-4 py-2 font-bold transition-colors ${selectedPreset===key?"bg-blue-600 border-blue-600 text-white shadow-sm":"bg-white border-slate-200 text-slate-600 hover:bg-blue-50"}`}>{label}</button>)}<input aria-label="광고 시작일" type="date" value={range[0]} max={todayKst()} onChange={e=>{setRange([e.target.value,range[1]]);setSelectedPreset(null);}} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={todayKst()} onChange={e=>{setRange([range[0],e.target.value]);setSelectedPreset(null);}} className="border rounded-lg px-3"/>{selectedPreset===null&&<span className="self-center text-xs font-bold text-blue-700">직접 설정</span>}</div>
+ <div className="flex flex-wrap gap-2">{[['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달']].map(([key,label])=><button key={key} disabled={busy||(key==='month'&&todayKst().slice(8)==='01')} onClick={()=>{setRange(adsRange(key));setSelectedPreset(key);}} aria-pressed={selectedPreset===key} className={`border rounded-lg px-4 py-2 font-bold transition-colors ${selectedPreset===key?"bg-blue-600 border-blue-600 text-white shadow-sm":"bg-white border-slate-200 text-slate-600 hover:bg-blue-50"}`}>{label}</button>)}<input aria-label="광고 시작일" type="date" value={range[0]} max={adsLatestDate()} disabled={busy} onChange={e=>{if(e.target.value>adsLatestDate())return;setRange([e.target.value,range[1]]);setSelectedPreset(null);}} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={adsLatestDate()} disabled={busy} onChange={e=>{if(e.target.value>adsLatestDate())return;setRange([range[0],e.target.value]);setSelectedPreset(null);}} className="border rounded-lg px-3"/>{selectedPreset===null&&<span className="self-center text-xs font-bold text-blue-700">직접 설정</span>}</div>
  <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['supplier','로켓배송'],['wing','윙'],['all','전체']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
  <p className="text-sm text-slate-600">{range.join(' ~ ')} · 로켓 청구액 {dates.filter(d=>billingDays[d]?.supplier?.complete).length}/{dates.length}일 · 윙 청구액 {dates.filter(d=>billingDays[d]?.wing?.complete).length}/{dates.length}일 · 로켓·윙 전환 {conversionAvailable.length}/{dates.length}일</p><p className="text-sm text-blue-700 whitespace-pre-wrap" role="status">{status}</p>
  <AdsProgress job={job} busy={busy}/>
@@ -1153,54 +1207,65 @@ function App() {
       catch(e){setAdsStatus('중단 응답을 확인하지 못했습니다: '+String(e.message||e)+' · 확장 프로그램을 새로고침해주세요.');}
       finally{adsBusyRef.current=false;setAdsBusy(false);}
     };
-    const syncAds = async (range=null,{showTab=true}={}) => {
+    const syncAds = async (range=null,{showTab=false}={}) => {
       if(adsBusyRef.current)return;
-      adsBusyRef.current=true;setAdsBusy(true);const run=++adsRunRef.current;const current=()=>adsRunRef.current===run;
-      const failures=[];let completed=0,savedTasks=0;
+      adsBusyRef.current=true;setAdsBusy(true);const run=++adsRunRef.current,current=()=>adsRunRef.current===run;
+      let dates=[],savedTasks=0,completed=0,requestLabel='연결 확인';const saved=new Map();
       try{
         if(!useFirebase)throw Error('클라우드 연결을 확인해주세요.');
-        const ping=await bridgeRequest('YORGO_STOCK_PING');
-        if(!current())return;
-        if(!ping.ok||!ping.adsConversion14||ping.bridgeRevision<85)throw Error('V85 확장 프로그램 전체 파일 교체와 확장 프로그램 새로고침이 필요합니다.');
-        const dates=adsDates(...(range||adsRange('yesterday'))).sort();
-        setAdsJob({phase:'collecting',done:0,total:dates.length,label:'전환·청구액 수집 시작',date:null});
-        const persist=async(field,date,key,day)=>{
-          setAdsJob(previous=>({...previous,phase:'saving',label:'조회한 자료 저장 중'}));
-          const ref=db.doc('yomimon_dashboard/inventory_master');
-          await db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('클라우드 원본이 없습니다.');const raw=snap.data(),next={...(raw[field]||{})};next[date]=key?{...(next[date]||{}),[key]:day}:day;if(new Blob([JSON.stringify({...raw,[field]:next})]).size>900000)throw Error('저장 공간이 부족합니다.');tx.update(ref,{[field]:next,adsUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()});});
-          if(key)setAdBillingDays(old=>({...old,[date]:{...(old[date]||{}),[key]:day}}));else setAdConversionDays(old=>({...old,[date]:day}));
-        };
-        for(const date of dates){
-          let dateOK=true;
+        dates=adsDates(...(range||adsRange('yesterday'))).sort();if(!dates.length)throw Error('조회할 날짜가 없습니다.');
+        // Settlement reports are available through yesterday. Do not silently
+        // collect conversions only and claim that today's billing is complete.
+        if(dates.at(-1)>=todayKst())throw Error('부가세 포함 정산 보고서는 어제까지 제공됩니다. 종료일을 어제 이전으로 설정해주세요.');
+        const chunks=adsPeriodChunks(dates),sessionKey='period_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+        const ping=await bridgeRequest('YORGO_STOCK_PING');if(!current())return;
+        if(!ping.ok||!ping.adsPeriodExport||ping.bridgeRevision<88)throw Error('V88 background.js 교체 후 확장 프로그램과 웹페이지를 새로고침해주세요.');
+        const totalTasks=dates.length*3,totalReports=chunks.length*3;let reportIndex=0;
+        for(const date of dates)saved.set(date,new Set());
+        setAdsJob({phase:'collecting',done:0,total:dates.length,savedTasks:0,totalTasks,label:'기간 엑셀 원본 수집 시작 · 보고서 '+totalReports+'개',date:null});
+        for(const chunk of chunks){
+          const start=chunk[0],end=chunk.at(-1),rangeLabel=start+' ~ '+end;
           for(const kind of ['conversion','supplier','wing']){
             if(!current())return;
-            const label=kind==='conversion'?'로켓·윙 직접/간접 수량·매출':kind==='supplier'?'로켓 부가세 포함 청구액':'윙 부가세 포함 청구액';
-            setAdsJob({phase:'collecting',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,date,label,rowsDone:0,rowsTotal:0});setAdsStatus(`${date} · ${label} 조회 중`);
-            try{
-              const args=[date,showTab?'foreground':'background',...(kind==='conversion'?[]:['billing',kind])];
-              const response=await bridgeRequest('YORGO_ADS_FETCH',args,140000);
-              if(!current())return;
-              if(['TAB_CLOSED','BUSY','EXTENSION_UNAVAILABLE'].includes(response.status))throw Object.assign(Error(response.message||response.status),{fatal:true});
-              if(!response.ok)throw Error(response.message||response.status||'조회 실패');
-              if(kind==='conversion'){
-                const day=response.conversionDay;
-                if(day?.date!==date||day.complete!==true||day.basis!=='14-day-attribution'||!Array.isArray(day.rows)||!day.rows.length||day.rows.some(r=>typeof r.name!=='string'||!r.name.trim()||typeof r.supplier!=='boolean'||!Number.isSafeInteger(r.clicks)||r.clicks<0||['direct','indirect'].some(mode=>['orders','units','sales'].some(k=>!Number.isFinite(r[mode]?.[k])||r[mode][k]<0||(k!=='sales'&&!Number.isSafeInteger(r[mode][k]))))))throw Error('전환 결과 검증 실패');
-                await persist('adConversionDays',date,null,day);
-              }else{
-                const day=response.billingDay;
-                if(day?.date!==date||day.complete!==true||day.supplier!==(kind==='supplier')||['total','net','vat'].some(k=>!Number.isSafeInteger(day[k])||day[k]<0)||day.total!==day.net+day.vat||!Array.isArray(day.rows)||day.rows.some(r=>typeof r.name!=='string'||!r.name.trim()||r.supplier!==day.supplier||!Number.isFinite(r.net)||r.net<0||(r.spend!=null&&(!Number.isFinite(r.spend)||r.spend<0))))throw Error('부가세 포함 청구액 검증 실패');
-                await persist('adBillingDays',date,kind,day);
-              }
-              savedTasks++;
-            }catch(e){if(!current())return;if(e.fatal)throw e;dateOK=false;failures.push(`${date} ${label}: ${String(e.message||e)}`);}
+            const label=kind==='conversion'?'로켓·윙 직접/간접 전환':kind==='supplier'?'로켓 부가세 포함 정산':'윙 부가세 포함 정산';
+            requestLabel=rangeLabel+' · '+label;reportIndex++;
+            setAdsJob({phase:'collecting',done:completed,total:dates.length,savedTasks,totalTasks,date:rangeLabel,label:label+' · 기간 보고서 '+reportIndex+'/'+totalReports,rowsDone:0,rowsTotal:0});
+            setAdsStatus(requestLabel+' · 기간 전체 엑셀 원본 조회 중 ('+reportIndex+'/'+totalReports+')');
+            const response=await bridgeRequest('YORGO_ADS_FETCH',[start,showTab?'foreground':'background','export',kind,end,sessionKey,reportIndex===totalReports?'last':'keep'],260000);
+            if(!current())return;
+            if(!response.ok)throw Error(response.message||response.status||'기간 보고서 조회 실패');
+            const exported=response.exported;if(exported?.startDate!==start||exported.endDate!==end||exported.kind!==kind)throw Error('요청 기간과 반환된 엑셀 원본이 다릅니다.');
+            const matrix=adsExportMatrix(exported),incoming=adsParsePeriod(matrix,chunk,kind,exported.checkedAt);
+            if(Object.keys(incoming).length!==chunk.length||chunk.some(date=>incoming[date]?.complete!==true))throw Error('기간별 저장 자료 검증 실패');
+            if(!current())return;
+            setAdsJob(previous=>({...previous,phase:'saving',label:label+' · '+chunk.length+'일 일괄 저장 중'}));
+            const field=kind==='conversion'?'adConversionDays':'adBillingDays',ref=db.doc('yomimon_dashboard/inventory_master');
+            await db.runTransaction(async tx=>{
+              const snap=await tx.get(ref);if(!current())throw Error('CANCELLED');if(!snap.exists)throw Error('클라우드 원본이 없습니다.');
+              const raw=snap.data(),next={...(raw[field]||{})};for(const [date,day] of Object.entries(incoming))next[date]=kind==='conversion'?day:{...(next[date]||{}),[kind]:day};
+              if(new Blob([JSON.stringify({...raw,[field]:next})]).size>900000)throw Error('저장 공간이 부족합니다.');
+              tx.update(ref,{[field]:next,adsUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+            });
+            if(!current())return;
+            if(kind==='conversion')setAdConversionDays(old=>({...old,...incoming}));
+            else setAdBillingDays(old=>{const next={...old};for(const [date,day] of Object.entries(incoming))next[date]={...(next[date]||{}),[kind]:day};return next;});
+            for(const date of chunk)saved.get(date).add(kind);savedTasks+=chunk.length;completed=[...saved.values()].filter(set=>set.size===3).length;
+            setAdsJob(previous=>({...previous,done:completed,savedTasks,label:label+' · '+chunk.length+'일 저장 완료'}));
           }
-          if(dateOK)completed++;
         }
         if(!current())return;
-        const message=failures.length?`${savedTasks?'부분 완료':'수집 실패'} · 이번 실행 ${completed}/${dates.length}일 전체 저장 · 자료 ${savedTasks}/${dates.length*3}건 저장\n${failures.join('\n')}`:`수집 성공 · ${completed}/${dates.length}일 · 로켓·윙 전환 수량/매출과 부가세 포함 청구액 저장 완료`;
-        setAdsStatus(message);setAdsJob({phase:failures.length?(savedTasks?'partial':'error'):'complete',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,label:failures.length?'실패 항목은 날짜별 사유 확인 · 성공한 자료는 저장됨':'전체 자료 저장 완료',date:null});
-      }catch(e){if(!current())return;setAdsStatus('수집 중단: '+String(e.message||e)+' · 성공한 자료는 보존했습니다.');setAdsJob(previous=>({...previous,phase:'error',label:String(e.message||e)}));}
-      finally{if(current()){adsBusyRef.current=false;setAdsBusy(false);}}
+        setAdsStatus('수집 성공 · '+completed+'/'+dates.length+'일 · 기간 보고서 '+totalReports+'개로 로켓·윙 전환 및 부가세 포함 청구액 저장 완료');
+        setAdsJob({phase:'complete',done:completed,total:dates.length,savedTasks,totalTasks,label:'기간 전체 저장 완료 · 수집 탭 닫힘',date:null});
+      }catch(e){
+        if(!current())return;
+        setAdsStatus((savedTasks?'부분 완료':'수집 실패')+' · '+completed+'/'+dates.length+'일 전체 저장\n'+requestLabel+': '+String(e.message||e)+'\n자동 재시도하지 않습니다. 이미 저장한 자료는 보존했습니다.');
+        setAdsJob(previous=>({...previous,phase:savedTasks?'partial':'error',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,label:requestLabel+' · '+String(e.message||e)}));
+      }finally{
+        if(current()){
+          try{await bridgeRequest('YORGO_ADS_CANCEL',[],10000);}catch{}
+          if(current()){adsBusyRef.current=false;setAdsBusy(false);}
+        }
+      }
     };
     const handleStockFetch = async (automatic=false) => {
         automatic=automatic===true;
@@ -1886,6 +1951,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
