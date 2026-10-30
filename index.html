@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v74)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v75)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -73,8 +73,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 74;
-const APP_UPDATED_AT = "2026-10-30 09:10"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 75;
+const APP_UPDATED_AT = "2026-10-30 09:55"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -590,6 +590,30 @@ function Dropdown({label,value,options,onChange}) {
     );
 }
 
+const adsRange=(preset,today=todayKst())=>{
+ const d=new Date(today+'T00:00:00Z'),day=n=>new Date(d.getTime()+n*86400000).toISOString().slice(0,10);
+ if(preset==='today')return [today,today];if(preset==='yesterday')return [day(-1),day(-1)];
+ if(preset==='week')return [day(-7),day(-1)];if(preset==='month')return [today.slice(0,7)+'-01',today];
+ return [new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-1,1)).toISOString().slice(0,10),new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),0)).toISOString().slice(0,10)];
+};
+const adsDates=(start,end)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end||end>todayKst())throw Error('조회 기간을 확인해주세요.');const out=[];for(let d=new Date(start+'T00:00:00Z');d<=new Date(end+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1)){if(out.length>=93)throw Error('한 번에 최대 93일까지 조회할 수 있습니다.');out.push(d.toISOString().slice(0,10));}return out;};
+const adsAggregate=rows=>{const map=new Map();rows.forEach(r=>{const key=JSON.stringify([r.name,r.supplier]);let x=map.get(key);if(!x){x={name:r.name,supplier:r.supplier,spend:0,sales:0,units:0,partial:false};map.set(key,x);}x.spend+=r.spend;x.partial||=r.sales===null||r.units===null;x.sales+=r.sales||0;x.units+=r.units||0;});return [...map.values()].map(x=>({...x,sales:x.partial?null:x.sales,units:x.partial?null:x.units})).sort((a,b)=>b.spend-a.spend);};
+function AdsPanel({days,busy,status,onSync}){
+ const [range,setRange]=useState(()=>adsRange('week')),[source,setSource]=useState('supplier'),[mode,setMode]=useState('campaign'),[query,setQuery]=useState('');
+ const dates=useMemo(()=>{try{return adsDates(...range);}catch{return [];}},[range]);
+ const available=dates.filter(d=>days[d]);
+ const rows=available.flatMap(date=>(days[date].rows||[]).filter(r=>(source==='all'||(source==='supplier'?r.supplier:!r.supplier))&&r.name.toLowerCase().includes(query.toLowerCase())).map(r=>({...r,date})));
+ const grouped=adsAggregate(rows),totals=grouped.reduce((a,r)=>({spend:a.spend+r.spend,sales:a.sales+(r.sales||0),units:a.units+(r.units||0),partial:a.partial||r.sales===null}),{spend:0,sales:0,units:0,partial:false});
+ const show=n=>n===null?'집계 전':Number(n).toLocaleString('ko-KR');const roas=r=>r.sales===null?'집계 전':r.spend>0?(r.sales/r.spend*100).toFixed(2)+'%':'—';
+ return <section className="m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">광고 전환 매출 기준 · ROAS = 매출 ÷ 광고비 × 100</p></div><button disabled={busy} onClick={()=>onSync(range)} className="bg-blue-600 text-white rounded-xl px-5 py-2 font-bold disabled:opacity-50">{busy?'광고 수집 중…':'선택 기간 수집 / 새로고침'}</button></div>
+ <div className="flex flex-wrap gap-2">{[['today','오늘'],['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달']].map(([key,label])=><button key={key} onClick={()=>setRange(adsRange(key))} className="border rounded-lg px-4 py-2 hover:bg-blue-50">{label}</button>)}<input aria-label="광고 시작일" type="date" value={range[0]} max={todayKst()} onChange={e=>setRange([e.target.value,range[1]])} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={todayKst()} onChange={e=>setRange([range[0],e.target.value])} className="border rounded-lg px-3"/></div>
+ <div className="flex flex-wrap gap-3"><select aria-label="광고 배송 유형" value={source} onChange={e=>setSource(e.target.value)} className="border rounded-lg p-2"><option value="supplier">로켓배송 (Supplier Hub)</option><option value="wing">윙</option><option value="all">전체</option></select><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
+ <p className="text-sm text-slate-600">{range.join(' ~ ')} · 저장된 날짜 {available.length}/{dates.length}일 {available.length!==dates.length&&' · 미수집 날짜가 있습니다. 선택 기간 수집을 눌러주세요.'}</p><p className="text-sm text-blue-700 whitespace-pre-wrap" role="status">{status}</p>
+ </div><div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[['집행 광고비',show(totals.spend)+'원'],['광고 전환 판매수',totals.partial?'집계 전 포함':show(totals.units)],['광고 전환 매출',totals.partial?'집계 전 포함':show(totals.sales)+'원'],['ROAS',roas({...totals,sales:totals.partial?null:totals.sales})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{rows.length?value:'—'}</strong></div>)}</div>
+ <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{[...(mode==='daily'?['날짜']:[]),'캠페인','구분','광고비 (원)','전환 판매수','전환 매출 (원)','ROAS',...(mode==='daily'?['구매 전환율']:[])].map(t=><th key={t} className="p-4 text-left">{t}</th>)}</tr></thead><tbody>{(mode==='daily'?rows.sort((a,b)=>b.date.localeCompare(a.date)||b.spend-a.spend):grouped).map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold">{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{show(r.spend)}</td><td className="p-4">{show(r.units)}</td><td className="p-4">{show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td>{mode==='daily'&&<td className="p-4">{r.cvr===null?'집계 전':r.cvr+'%'}</td>}</tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
+ <p className="text-xs text-slate-500">오늘은 광고센터의 누적 광고비만 제공되며 판매수·매출·ROAS는 집계 전으로 표시합니다. 과거 성과도 이후 전환 반영으로 달라질 수 있어 다시 수집하면 해당 날짜를 교체합니다. 구매 전환율은 날짜별 원본 수치를 표시합니다. ROAS는 이익률이 아닙니다. 광고 수집 중에는 광고센터 화면을 조작하지 마세요.</p></section>;
+}
+
 function App() {
     const [dbSync, setDbSync] = useState("🔄 연결 중...");
     const [lastSyncedAt, setLastSyncedAt] = useState(null);
@@ -606,6 +630,8 @@ function App() {
     const CUR_M=useMemo(()=>String(new Date().getMonth()+1).padStart(2,'0'),[]);
     
     const [view,setView]=useState("rocket"); // N배송은 더 이상 관리하지 않아 로켓배송 고정
+    const [adsDays,setAdsDays]=useState({}),[adsBusy,setAdsBusy]=useState(false),[adsStatus,setAdsStatus]=useState('');
+    const adsBusyRef=useRef(false);
     const changeView=v=>{setView(v);try{sessionStorage.setItem("activeTab",v);}catch(e){}};
 
     const [notif,setNotif]=useState(null);
@@ -675,6 +701,7 @@ function App() {
             if (docSnap.exists) {
                 const d = await decodeInventoryDocument(docSnap.data());
                 if(disposed||sequence!==snapshotSequence)return;
+                setAdsDays(d.adsDays||{});
                 setWebColorMap(d.webColorMap||{});
                 if (d.DATES?.length) setDbDates(d.DATES);
                 if (d.STOCK && Object.keys(d.STOCK).length) setDbStock(mergeStockHistory(d.STOCK));
@@ -994,9 +1021,34 @@ function App() {
             const runDate=nextRunDate(rd,today);const ri=d.RI.map(x=>rememberStockMapping({...x,history:{...(x.history||{}),[runDate]:values.has(stockItemKey(x))?values.get(stockItemKey(x)):'-'}},resolveStockMapping(x,d.RI)));
             await writeInventoryDocument(tx,ref,d,{RD:[...rd,runDate],RI:ri},true);return runDate;});
     };
+    const syncAds = async (range=null) => {
+      if(adsBusyRef.current)return;
+      adsBusyRef.current=true;setAdsBusy(true);
+      try{
+        if(!useFirebase)throw Error('클라우드 연결을 확인해주세요.');
+        const ping=await bridgeRequest('YORGO_STOCK_PING');
+        if(!ping.ok||String(ping.version||'').split('.').slice(0,2).join('.')!=='1.1')throw Error('광고 연동용 확장 프로그램 1.1을 설치한 뒤 이 페이지를 새로고침해주세요.');
+        const today=todayKst(),full=range||[adsRange('lastmonth')[0],today];
+        const all=adsDates(...full),refresh=adsRange('week')[0];
+        const dates=all.filter(date=>range||!adsDays[date]||date>=refresh).sort((a,b)=>b.localeCompare(a));
+        let count=0;
+        for(const date of dates){
+          setAdsStatus(`광고 수집 ${count+1}/${dates.length} · ${date} (광고센터 화면을 조작하지 마세요)`);
+          const response=await bridgeRequest('YORGO_ADS_FETCH',[date],120000);
+          if(!response.ok)throw Error(response.message||response.status||'광고 조회 실패');
+          const day=response.day;
+          if(day?.date!==date||!Array.isArray(day.rows)||!day.rows.length||day.rows.some(r=>typeof r.name!=='string'||typeof r.supplier!=='boolean'||!Number.isFinite(r.spend)||r.spend<0||(!day.partial&&(!Number.isFinite(r.sales)||!Number.isSafeInteger(r.units)||r.units<0))))throw Error('광고 결과 형식이 올바르지 않아 저장을 중단했습니다.');
+          const ref=db.doc('yomimon_dashboard/inventory_master');
+          await db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('클라우드 원본이 없습니다.');const raw=snap.data(),next={...(raw.adsDays||{}),[date]:day};if(new Blob([JSON.stringify({...raw,adsDays:next})]).size>900000)throw Error('저장 공간이 부족합니다.');tx.update(ref,{adsDays:next,adsUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()});});
+          setAdsDays(previous=>({...previous,[date]:day}));count++;
+        }
+        setAdsStatus(`${count}일 광고 성과 저장 완료 · `+new Date().toLocaleString('ko-KR'));
+      }catch(e){setAdsStatus('광고 수집 중단: '+String(e.message||e)+' · 이전에 저장된 날짜는 유지됩니다.');}
+      finally{adsBusyRef.current=false;setAdsBusy(false);}
+    };
     const handleStockFetch = async (automatic=false) => {
         automatic=automatic===true;
-        if(stockBusyRef.current||excelBusyRef.current)return;stockBusyRef.current=true;
+        if(stockBusyRef.current||excelBusyRef.current||adsBusyRef.current)return;stockBusyRef.current=true;
         try{
             if(!useFirebase)throw new Error('클라우드 연결이 없어 저장하지 않았습니다.');const check=inventoryQueries();
             if(!check.latest||!check.tracked.length||check.problems.length)throw new Error(check.problems.join(', ')||'조회할 숫자 재고 상품이 없습니다.');
@@ -1008,6 +1060,7 @@ function App() {
             if(!response.ok){const states=[...new Set((response.results||[]).filter(r=>!r.complete||r.status!=='OK').map(r=>r.status))];throw new Error('쿠팡 조회 실패 ('+(states.join(', ')||response.status)+'). 쿠팡 로그인/새로고침 후 재시도하세요. 재고는 저장하지 않았습니다.');}
             loginWaitRef.current=0;const runDate=await applyInventoryResults(check.queries,response);setStockRun({phase:'done',message:check.queries.length+'개 상품을 '+runDate+' 열로 추가했습니다. 기존 기록은 유지했습니다.',details:[]});
         }catch(e){setStockRun({phase:'error',message:'저장하지 않았습니다.',details:[String(e.message||e)]});}finally{stockBusyRef.current=false;}
+        if(!automatic)await syncAds();
     };
 
     useEffect(()=>{if(stockRun.phase!=='login')return;const timer=setInterval(()=>{if(Date.now()-loginWaitRef.current>180000){setStockRun({phase:'error',message:'로그인 대기 시간이 지났습니다. 로그인 후 현재고 불러오기를 다시 눌러주세요.',details:[]});return;}handleStockFetch(true);},10000);return()=>clearInterval(timer);},[stockRun.phase]);
@@ -1254,7 +1307,7 @@ function App() {
                     </div>
                     
                     <div className="ml-auto flex items-center gap-2">
-                        <button type="button" onClick={()=>handleStockFetch(false)} disabled={excelBusy||stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
+                        <button type="button" onClick={()=>handleStockFetch(false)} disabled={adsBusy||excelBusy||stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{adsBusy?'광고 수집 중...':stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
                         <a href="https://arxotn-git.github.io/receiving/receiving_index.html" 
                            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">
                             <span>입고 관리</span>
@@ -1282,7 +1335,10 @@ function App() {
                         ))}
                     </div>
                 )}
+                <nav className="flex gap-2 mt-3">{[['rocket','🚀 로켓배송 재고'],['ads','📊 광고 현황']].map(([key,label])=><button key={key} onClick={()=>changeView(key)} className={`px-6 py-3 font-bold rounded-t-xl ${view===key?'bg-slate-50 text-slate-900':'text-slate-300 hover:bg-slate-800'}`}>{label}</button>)}</nav>
             </header>
+            {view==='ads'&&<AdsPanel days={adsDays} busy={adsBusy} status={adsStatus} onSync={syncAds}/>}
+            {view!=='ads'&&adsStatus&&<p className="mx-10 mt-3 text-sm text-blue-700">{adsStatus}</p>}
 
             {notif && (
                 <div className="fixed top-12 left-1/2 transform -translate-x-1/2 z-[9999] pointer-events-none toast-animate">
