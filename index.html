@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v75)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v76)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -73,8 +73,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 75;
-const APP_UPDATED_AT = "2026-10-30 09:55"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 76;
+const APP_UPDATED_AT = "2026-10-30 10:28"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -599,18 +599,20 @@ const adsRange=(preset,today=todayKst())=>{
 const adsDates=(start,end)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end||end>todayKst())throw Error('조회 기간을 확인해주세요.');const out=[];for(let d=new Date(start+'T00:00:00Z');d<=new Date(end+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1)){if(out.length>=93)throw Error('한 번에 최대 93일까지 조회할 수 있습니다.');out.push(d.toISOString().slice(0,10));}return out;};
 const adsAggregate=rows=>{const map=new Map();rows.forEach(r=>{const key=JSON.stringify([r.name,r.supplier]);let x=map.get(key);if(!x){x={name:r.name,supplier:r.supplier,spend:0,sales:0,units:0,partial:false};map.set(key,x);}x.spend+=r.spend;x.partial||=r.sales===null||r.units===null;x.sales+=r.sales||0;x.units+=r.units||0;});return [...map.values()].map(x=>({...x,sales:x.partial?null:x.sales,units:x.partial?null:x.units})).sort((a,b)=>b.spend-a.spend);};
 function AdsPanel({days,busy,status,onSync}){
- const [range,setRange]=useState(()=>adsRange('week')),[source,setSource]=useState('supplier'),[mode,setMode]=useState('campaign'),[query,setQuery]=useState('');
+ const [range,setRange]=useState(()=>adsRange('yesterday')),[source,setSource]=useState('all'),[mode,setMode]=useState('campaign'),[query,setQuery]=useState('');
+ const [selectedPreset,setSelectedPreset]=useState('yesterday');
  const dates=useMemo(()=>{try{return adsDates(...range);}catch{return [];}},[range]);
  const available=dates.filter(d=>days[d]);
  const rows=available.flatMap(date=>(days[date].rows||[]).filter(r=>(source==='all'||(source==='supplier'?r.supplier:!r.supplier))&&r.name.toLowerCase().includes(query.toLowerCase())).map(r=>({...r,date})));
  const grouped=adsAggregate(rows),totals=grouped.reduce((a,r)=>({spend:a.spend+r.spend,sales:a.sales+(r.sales||0),units:a.units+(r.units||0),partial:a.partial||r.sales===null}),{spend:0,sales:0,units:0,partial:false});
  const show=n=>n===null?'집계 전':Number(n).toLocaleString('ko-KR');const roas=r=>r.sales===null?'집계 전':r.spend>0?(r.sales/r.spend*100).toFixed(2)+'%':'—';
- return <section className="m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">광고 전환 매출 기준 · ROAS = 매출 ÷ 광고비 × 100</p></div><button disabled={busy} onClick={()=>onSync(range)} className="bg-blue-600 text-white rounded-xl px-5 py-2 font-bold disabled:opacity-50">{busy?'광고 수집 중…':'선택 기간 수집 / 새로고침'}</button></div>
- <div className="flex flex-wrap gap-2">{[['today','오늘'],['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달']].map(([key,label])=><button key={key} onClick={()=>setRange(adsRange(key))} className="border rounded-lg px-4 py-2 hover:bg-blue-50">{label}</button>)}<input aria-label="광고 시작일" type="date" value={range[0]} max={todayKst()} onChange={e=>setRange([e.target.value,range[1]])} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={todayKst()} onChange={e=>setRange([range[0],e.target.value])} className="border rounded-lg px-3"/></div>
- <div className="flex flex-wrap gap-3"><select aria-label="광고 배송 유형" value={source} onChange={e=>setSource(e.target.value)} className="border rounded-lg p-2"><option value="supplier">로켓배송 (Supplier Hub)</option><option value="wing">윙</option><option value="all">전체</option></select><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
+ return <section className="m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">광고센터 표시 원본 기준 · ROAS = 광고 전환 매출 ÷ 집행 광고비 × 100</p></div><button disabled={busy} onClick={()=>onSync(range)} className="bg-blue-600 text-white rounded-xl px-5 py-2 font-bold disabled:opacity-50">{busy?'광고 수집 중…':'선택 기간 수집 / 새로고침'}</button></div>
+ <div className="flex flex-wrap gap-2">{[['today','오늘'],['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달']].map(([key,label])=><button key={key} onClick={()=>{setRange(adsRange(key));setSelectedPreset(key);}} aria-pressed={selectedPreset===key} className={`border rounded-lg px-4 py-2 font-bold transition-colors ${selectedPreset===key?"bg-blue-600 border-blue-600 text-white shadow-sm":"bg-white border-slate-200 text-slate-600 hover:bg-blue-50"}`}>{label}</button>)}<input aria-label="광고 시작일" type="date" value={range[0]} max={todayKst()} onChange={e=>{setRange([e.target.value,range[1]]);setSelectedPreset(null);}} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={todayKst()} onChange={e=>{setRange([range[0],e.target.value]);setSelectedPreset(null);}} className="border rounded-lg px-3"/>{selectedPreset===null&&<span className="self-center text-xs font-bold text-blue-700">직접 설정</span>}</div>
+ <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['all','전체'],['supplier','로켓배송'],['wing','윙']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
  <p className="text-sm text-slate-600">{range.join(' ~ ')} · 저장된 날짜 {available.length}/{dates.length}일 {available.length!==dates.length&&' · 미수집 날짜가 있습니다. 선택 기간 수집을 눌러주세요.'}</p><p className="text-sm text-blue-700 whitespace-pre-wrap" role="status">{status}</p>
  </div><div className="grid grid-cols-2 md:grid-cols-4 gap-4">{[['집행 광고비',show(totals.spend)+'원'],['광고 전환 판매수',totals.partial?'집계 전 포함':show(totals.units)],['광고 전환 매출',totals.partial?'집계 전 포함':show(totals.sales)+'원'],['ROAS',roas({...totals,sales:totals.partial?null:totals.sales})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{rows.length?value:'—'}</strong></div>)}</div>
  <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{[...(mode==='daily'?['날짜']:[]),'캠페인','구분','광고비 (원)','전환 판매수','전환 매출 (원)','ROAS',...(mode==='daily'?['구매 전환율']:[])].map(t=><th key={t} className="p-4 text-left">{t}</th>)}</tr></thead><tbody>{(mode==='daily'?rows.sort((a,b)=>b.date.localeCompare(a.date)||b.spend-a.spend):grouped).map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold">{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{show(r.spend)}</td><td className="p-4">{show(r.units)}</td><td className="p-4">{show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td>{mode==='daily'&&<td className="p-4">{r.cvr===null?'집계 전':r.cvr+'%'}</td>}</tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
+ <p className="text-xs text-slate-500">출처: 쿠팡 광고센터 → 광고 관리 → 매출 성장 → 모든 캠페인. 집행 광고비·광고 전환 판매수·광고 전환 매출을 날짜별로 수집하며, 부가세 가감이나 정산 매출 보정은 하지 않습니다.</p>
  <p className="text-xs text-slate-500">오늘은 광고센터의 누적 광고비만 제공되며 판매수·매출·ROAS는 집계 전으로 표시합니다. 과거 성과도 이후 전환 반영으로 달라질 수 있어 다시 수집하면 해당 날짜를 교체합니다. 구매 전환율은 날짜별 원본 수치를 표시합니다. ROAS는 이익률이 아닙니다. 광고 수집 중에는 광고센터 화면을 조작하지 마세요.</p></section>;
 }
 
@@ -1296,8 +1298,8 @@ function App() {
 
     return(
         <div className="min-h-screen flex flex-col">
-            <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg pt-5 pb-0 px-6 md:px-10 relative z-50">
-                <div className="flex flex-wrap items-center gap-3 pb-5 border-b border-white/10">
+            <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg py-5 px-6 md:px-10 relative z-50">
+                <div className="flex flex-wrap items-center gap-3">
                     <div><h1 onClick={()=>window.location.reload()} title="클릭하면 새로고침" className="text-2xl font-bold cursor-pointer select-none">로켓배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1><p className="mt-1 text-xs font-normal text-slate-400">버전 업데이트: {APP_UPDATED_AT}</p></div>
                     <div className="flex items-center gap-2">
                         <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("연동") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
@@ -1306,6 +1308,7 @@ function App() {
 
                     </div>
                     
+                    <nav aria-label="주요 화면" className="flex items-center gap-2 ml-4 lg:ml-8">{[['rocket','🚀 재고 현황'],['ads','📊 광고 현황']].map(([key,label])=><button type="button" key={key} aria-pressed={view===key} onClick={()=>changeView(key)} className={`px-5 py-2.5 font-bold text-sm rounded-xl transition-colors ${view===key?'bg-white text-slate-900 shadow-sm':'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{label}</button>)}</nav>
                     <div className="ml-auto flex items-center gap-2">
                         <button type="button" onClick={()=>handleStockFetch(false)} disabled={adsBusy||excelBusy||stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{adsBusy?'광고 수집 중...':stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
                         <a href="https://arxotn-git.github.io/receiving/receiving_index.html" 
@@ -1335,7 +1338,7 @@ function App() {
                         ))}
                     </div>
                 )}
-                <nav className="flex gap-2 mt-3">{[['rocket','🚀 로켓배송 재고'],['ads','📊 광고 현황']].map(([key,label])=><button key={key} onClick={()=>changeView(key)} className={`px-6 py-3 font-bold rounded-t-xl ${view===key?'bg-slate-50 text-slate-900':'text-slate-300 hover:bg-slate-800'}`}>{label}</button>)}</nav>
+
             </header>
             {view==='ads'&&<AdsPanel days={adsDays} busy={adsBusy} status={adsStatus} onSync={syncAds}/>}
             {view!=='ads'&&adsStatus&&<p className="mx-10 mt-3 text-sm text-blue-700">{adsStatus}</p>}
