@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v73)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v74)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -73,8 +73,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 73;
-const APP_UPDATED_AT = "2026-10-29 12:52"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 74;
+const APP_UPDATED_AT = "2026-10-30 09:10"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -243,6 +243,27 @@ const STOCK_MAPPING = [
  {name:"빅북",option:"영어공부",vendorItemId:"75421956523"},{name:"빅북",option:"호기심",vendorItemId:"75421956574"},{name:"빅북",option:"3종",vendorItemId:"75478125673"}
 ];
 const stockKey = (name, option) => `${String(name||"").trim()}\u0000${String(option||"").trim()}`;
+// Display labels come from Excel. Keep the collection source independently.
+const stockItemKey = item => JSON.stringify([String(item.skuId||'').trim(),String(item.name||'').trim(),String(item.option||'').trim()]);
+const directStockMapping = item => {
+    const saved=STOCK_MAPPING.find(m=>m.vendorItemId===item.stockLink?.vendorItemId);
+    if(saved)return saved;
+    const exact=STOCK_MAPPING.find(m=>stockKey(m.name,m.option)===stockKey(item.name,item.option));
+    if(exact)return exact;
+    // Migrate the existing Fresh row, including the previously suggested hyphen label.
+    if(String(item.skuId||'').trim()==='로켓프레시'||(item.name==='클레이'&&/^10종팩\s*-\s*$/.test(item.option||'')))
+        return STOCK_MAPPING.find(m=>m.vendorItemId==='92213410006');
+    return null;
+};
+const resolveStockMapping = (item,items=[]) => {
+    const direct=directStockMapping(item);if(direct)return direct;
+    const sku=String(item.skuId||'').trim();if(!sku||sku==='-')return null;
+    const candidates=items.filter(x=>String(x.skuId||'').trim()===sku).map(directStockMapping).filter(Boolean);
+    const ids=[...new Set(candidates.map(m=>m.vendorItemId))];
+    return ids.length===1?candidates.find(m=>m.vendorItemId===ids[0]):null;
+};
+const rememberStockMapping = (item,mapping) => mapping?{...item,stockLink:{vendorItemId:mapping.vendorItemId}}:item;
+
 const todayKst = () => new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const isStockNumber = v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 const nextRunDate = (dates, today) => { if(!dates.includes(today)) return today; let n=2; while(dates.includes(`${today} (${n})`)) n++; return `${today} (${n})`; };
@@ -402,16 +423,21 @@ const importRocketSheet=(sheet,styledSheet,theme,existingItems,existingDates)=>{
     if(!p?.dCols.length)throw new Error('로켓배송 시트에서 날짜 열을 찾지 못했습니다. 상품명 / 구성 / SKU ID 다음에 날짜 열이 있어야 합니다.');
     if(new Set(p.parsedDates).size!==p.parsedDates.length)throw new Error('로켓배송 시트의 날짜 열이 중복됩니다. (2), (3)처럼 구분해주세요.');
     const oldMap=new Map(existingItems.map(x=>[excelItemKey(x.name,x.option),x]));
-    const seen=new Set(),items=[];
+    const seen=new Set(),matched=new Set(),items=[];
     const startRow=sheet['!ref']?XLSX.utils.decode_range(sheet['!ref']).s.r:0;
     for(let i=p.hri+1;i<p.rows.length;i++){
         const row=p.rows[i];if(!row?.length)continue;
         const cellValue=c=>{const v=styledSheet?.getCell(startRow+i+1,c+1)?.value;return v&&typeof v==='object'?(v.richText?v.richText.map(r=>r.text).join(''):v.result??''):v;};
         const name=String(row[0]||cellValue(0)||'').trim(),option=String(row[1]||cellValue(1)||'').trim(),skuId=String(row[2]??'').trim();
         if(!name||name==='undefined')continue;
-        const key=excelItemKey(name,option);if(seen.has(key))throw new Error('엑셀 상품 중복: '+name+' / '+option);seen.add(key);
-        const previous=oldMap.get(key)||{};
+        const key=stockItemKey({name,option,skuId});if(seen.has(key))throw new Error('엑셀 상품 중복: '+name+' / '+option+' / '+skuId);seen.add(key);
+        const skuMatches=skuId&&skuId!=='-'?existingItems.filter(x=>String(x.skuId||'').trim()===skuId):[];
+        const previous=(skuMatches.length===1?skuMatches[0]:oldMap.get(excelItemKey(name,option)))||{};
+        if(matched.has(previous))throw new Error('기존 상품에 두 행이 연결됩니다. SKU ID를 확인해주세요: '+skuId);
+        if(previous.name)matched.add(previous);
         const item={...previous,name,option,skuId,excelActive:true,history:{...(previous.history||{})},excelDateStyles:{...(previous.excelDateStyles||{})}};
+        const mapping=resolveStockMapping(previous,existingItems)||resolveStockMapping(item,existingItems);
+        if(mapping)item.stockLink={vendorItemId:mapping.vendorItemId};
         const nativeRow=styledSheet?.getRow(startRow+i+1);
         item.excelRowHidden=!!nativeRow?.hidden;
         item.excelRowHeight=nativeRow?.height||20;
@@ -430,7 +456,7 @@ const importRocketSheet=(sheet,styledSheet,theme,existingItems,existingDates)=>{
     }
     if(!items.length)throw new Error('엑셀에 로켓배송 상품이 없습니다. 저장하지 않았습니다.');
     // Omitted products retain their history but never reappear during stock collection.
-    existingItems.forEach(x=>{if(!seen.has(excelItemKey(x.name,x.option)))items.push({...x,excelActive:false});});
+    existingItems.forEach(x=>{if(!matched.has(x))items.push(rememberStockMapping({...x,excelActive:false},resolveStockMapping(x,existingItems)));});
     return {items,dates:sortInventoryDates([...existingDates,...p.parsedDates])};
 };
 
@@ -947,25 +973,25 @@ function App() {
         const timer=setTimeout(()=>{window.removeEventListener('message',onMessage);reject(new Error(type==='YORGO_STOCK_PING'?'Chrome 보조 기능이 연결되지 않았습니다. 아래 설치 안내를 확인하고 설치 후 새로고침하세요.':'조회 응답이 늦어 저장하지 않았습니다. 잠시 뒤 다시 눌러주세요.'));},timeout);
         window.addEventListener('message',onMessage);window.postMessage({source:YORGO_STOCK_SOURCE,type,requestId,queries},location.origin);
     });
-    const stockQuery = q => ({'와우펜북':'와우펜','키즈탭 프로':'키즈탭','동화툰 패키지':'동화툰','보드마카+지우개':'지우개'}[q.name]||q.name);
+    const stockQuery = q => q.sourceQuery || ({'와우펜북':'와우펜','키즈탭 프로':'키즈탭','동화툰 패키지':'동화툰','보드마카+지우개':'지우개'}[q.name]||q.name);
     const inventoryQueries = () => {
         const latest=rDates[rDates.length-1];const map=new Map(STOCK_MAPPING.map(m=>[stockKey(m.name,m.option),m]));const seen=new Set(),queries=[],problems=[];
         const tracked=rItems.filter(item=>item.excelActive!==false&&isStockNumber(item.history?.[latest]));
-        tracked.forEach(item=>{const key=stockKey(item.name,item.option);if(seen.has(key)){problems.push('중복 상품: '+item.name+' / '+item.option);return;}seen.add(key);const m=map.get(key);if(!m)problems.push('상품 연결 확인 필요: '+item.name+' / '+item.option);else queries.push({...m,skuId:String(item.skuId||'')});});
+        tracked.forEach(item=>{const key=stockItemKey(item);if(seen.has(key)){problems.push('중복 상품: '+item.name+' / '+item.option);return;}seen.add(key);const m=resolveStockMapping(item,rItems);if(!m)problems.push('상품 연결 확인 필요: '+item.name+' / '+item.option);else queries.push({...m,sourceQuery:stockQuery(m),name:item.name,option:item.option,skuId:String(item.skuId||'')});});
         if(new Set(STOCK_MAPPING.map(m=>stockKey(m.name,m.option))).size!==STOCK_MAPPING.length)problems.push('내장 상품 목록 중복');
         return {latest,tracked,queries,problems};
     };
     const applyInventoryResults = async (queries,response) => {
         const rows=Array.isArray(response.results)?response.results:[],byQuery=new Map(rows.map(r=>[String(r.query||''),r])),values=new Map(),failures=[];
         queries.forEach(q=>{const r=byQuery.get(stockQuery(q));const p=Array.isArray(r?.products)?r.products.find(x=>String(x.vendoritemid)===q.vendorItemId):null;const qty=p?.stockQuantity;
-            if(!r||!r.complete||r.status!=='OK'||!p||p.status!=='OK'||!Number.isSafeInteger(qty)||qty<0){failures.push(q.name+' / '+(q.option||'-'));return;}values.set(stockKey(q.name,q.option),qty);});
+            if(!r||!r.complete||r.status!=='OK'||!p||p.status!=='OK'||!Number.isSafeInteger(qty)||qty<0){failures.push(q.name+' / '+(q.option||'-'));return;}values.set(stockItemKey(q),qty);});
         if(failures.length||values.size!==queries.length)throw new Error('일부 상품의 표시 수량을 확인하지 못해 전부 저장하지 않았습니다: '+failures.join(', '));
         const ref=db.doc('yomimon_dashboard/inventory_master');
         return db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw new Error('클라우드 원본을 찾지 못했습니다.');const d=await decodeInventoryDocument(snap.data());if(!Array.isArray(d.RD)||!Array.isArray(d.RI))throw new Error('원본 구조가 달라 저장하지 않았습니다.');
             const today=todayKst(),rd=[...d.RD];if(rd.some(x=>String(x).slice(0,10)>today))throw new Error('원본 날짜가 오늘보다 미래입니다. 날짜를 확인해주세요.');
             const latest=rd[rd.length-1],active=d.RI.filter(x=>x.excelActive!==false&&isStockNumber(x.history?.[latest]));if(active.length!==queries.length)throw new Error('조회 중 상품 목록이 변경됐습니다. 새로고침 후 재시도하세요.');
-            const keys=new Set();active.forEach(x=>{const key=stockKey(x.name,x.option);if(keys.has(key)||!values.has(key))throw new Error('상품 목록이 변경되어 저장을 중단했습니다.');keys.add(key);const q=queries.find(q=>stockKey(q.name,q.option)===key);if(String(x.skuId||'')!==q.skuId)throw new Error('SKU가 변경됐습니다. 새로고침 후 확인해주세요.');});
-            const runDate=nextRunDate(rd,today);const ri=d.RI.map(x=>({...x,history:{...(x.history||{}),[runDate]:values.has(stockKey(x.name,x.option))?values.get(stockKey(x.name,x.option)):'-'}}));
+            const keys=new Set();active.forEach(x=>{const key=stockItemKey(x);if(keys.has(key)||!values.has(key))throw new Error('상품 목록이 변경되어 저장을 중단했습니다.');keys.add(key);const q=queries.find(q=>stockItemKey(q)===key);if(String(x.skuId||'')!==q.skuId)throw new Error('SKU가 변경됐습니다. 새로고침 후 확인해주세요.');});
+            const runDate=nextRunDate(rd,today);const ri=d.RI.map(x=>rememberStockMapping({...x,history:{...(x.history||{}),[runDate]:values.has(stockItemKey(x))?values.get(stockItemKey(x)):'-'}},resolveStockMapping(x,d.RI)));
             await writeInventoryDocument(tx,ref,d,{RD:[...rd,runDate],RI:ri},true);return runDate;});
     };
     const handleStockFetch = async (automatic=false) => {
