@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v77)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v79)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -73,8 +73,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 const SECRET_PASSWORD = "0501";
-const APP_VERSION = 77;
-const APP_UPDATED_AT = "2026-10-30 12:57"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 79;
+const APP_UPDATED_AT = "2026-10-30 14:05"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -628,29 +628,34 @@ const adsAggregate=rows=>{
  return [...map.values()].map(x=>({...x,spend:x.costPartial?null:x.spend,sales:x.partial?null:x.sales,units:x.partial?null:x.units,orders:x.partial?null:x.orders})).sort((a,b)=>(b.spend||0)-(a.spend||0));
 };
 function AdsPanel({days,conversionDays,busy,status,onSync,onReportImport}){
- const [range,setRange]=useState(()=>adsRange('yesterday')),[source,setSource]=useState('all'),[mode,setMode]=useState('campaign'),[query,setQuery]=useState('');
+ const [range,setRange]=useState(()=>adsRange('yesterday')),[source,setSource]=useState('supplier'),[mode,setMode]=useState('campaign'),[query,setQuery]=useState('');
  const [conversionMode,setConversionMode]=useState('indirect');
  const conversionLabel=conversionMode==='indirect'?'간접':'직접';
  const [selectedPreset,setSelectedPreset]=useState('yesterday');
  const dates=useMemo(()=>{try{return adsDates(...range);}catch{return [];}},[range]);
- const available=dates.filter(d=>days[d]);
+ const matchesSource=r=>source==='all'||(source==='supplier'?r.supplier:!r.supplier);
+ const available=dates.filter(d=>days[d]?.rows?.some(matchesSource));
+ const conversionAvailable=dates.filter(d=>conversionDays[d]?.rows?.some(matchesSource));
+ const conversionsMissing=conversionAvailable.length!==dates.length;
  const rows=dates.flatMap(date=>{
   const base=new Map((days[date]?.rows||[]).map(r=>[JSON.stringify([r.name.trim(),r.supplier]),{...r,date,sales:null,units:null,orders:null,clicks:null}]));
   for(const r of conversionDays[date]?.rows||[]){const key=JSON.stringify([r.name,r.supplier]);base.set(key,{...(base.get(key)||{name:r.name,supplier:r.supplier,date,spend:null}),...r[conversionMode],clicks:r.clicks,cvr:r.clicks>0?r[conversionMode].orders/r.clicks*100:null});}
   return [...base.values()].filter(r=>(source==='all'||(source==='supplier'?r.supplier:!r.supplier))&&r.name.toLowerCase().includes(query.toLowerCase()));
  });
  const grouped=adsAggregate(rows),totals=grouped.reduce((a,r)=>({spend:a.spend+(r.spend||0),sales:a.sales+(r.sales||0),units:a.units+(r.units||0),orders:a.orders+(r.orders||0),clicks:a.clicks+r.clicks,partial:a.partial||r.sales===null,costPartial:a.costPartial||r.spend===null}),{spend:0,sales:0,units:0,orders:0,clicks:0,partial:false,costPartial:false});
+ totals.partial ||= conversionsMissing;
  const show=n=>n==null?'미수집':Number(n).toLocaleString('ko-KR');const roas=r=>r.sales==null||r.spend==null?'—':r.spend>0?(r.sales/r.spend*100).toFixed(2)+'%':'—';
  const cvr=r=>r.orders==null||!r.clicks?'—':(r.orders/r.clicks*100).toFixed(2)+'%';
  return <section className="m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">{conversionLabel} 전환 · 14일 기여 기준</p></div><button disabled={busy} onClick={()=>onSync(range)} className="bg-blue-600 text-white rounded-xl px-5 py-2 font-bold disabled:opacity-50">{busy?'광고 수집 중…':'선택 기간 수집 / 새로고침'}</button></div>
  <div className="flex flex-wrap items-center gap-3"><div role="group" aria-label="전환 유형" className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">{[['indirect','간접 전환'],['direct','직접 전환']].map(([key,label])=><button key={key} type="button" aria-pressed={conversionMode===key} onClick={()=>setConversionMode(key)} className={`rounded-lg px-5 py-2 font-bold text-sm ${conversionMode===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><label className="border rounded-lg px-4 py-2 text-sm cursor-pointer bg-white">맞춤보고서 엑셀 반영<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onReportImport(file);e.target.value='';}}/></label></div>
  <p className="text-xs text-slate-500">출처: 쿠팡 광고센터 → 광고보고서 → 맞춤 보고서 → 맞춤 보고서 → 일별. 현재 <strong>{conversionLabel} 주문수·판매수량·전환 매출액(14일)</strong>입니다. 광고 클릭에 귀속된 실적이며 실제 구매일 기준 실적은 아닙니다.</p>
  <div className="flex flex-wrap gap-2">{[['today','오늘'],['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달']].map(([key,label])=><button key={key} onClick={()=>{setRange(adsRange(key));setSelectedPreset(key);}} aria-pressed={selectedPreset===key} className={`border rounded-lg px-4 py-2 font-bold transition-colors ${selectedPreset===key?"bg-blue-600 border-blue-600 text-white shadow-sm":"bg-white border-slate-200 text-slate-600 hover:bg-blue-50"}`}>{label}</button>)}<input aria-label="광고 시작일" type="date" value={range[0]} max={todayKst()} onChange={e=>{setRange([e.target.value,range[1]]);setSelectedPreset(null);}} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={todayKst()} onChange={e=>{setRange([range[0],e.target.value]);setSelectedPreset(null);}} className="border rounded-lg px-3"/>{selectedPreset===null&&<span className="self-center text-xs font-bold text-blue-700">직접 설정</span>}</div>
- <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['all','전체'],['supplier','로켓배송'],['wing','윙']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
- <p className="text-sm text-slate-600">{range.join(' ~ ')} · 저장된 날짜 {available.length}/{dates.length}일 {available.length!==dates.length&&' · 미수집 날짜가 있습니다. 선택 기간 수집을 눌러주세요.'}</p><p className="text-sm text-blue-700 whitespace-pre-wrap" role="status">{status}</p>
+ <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['supplier','로켓배송'],['wing','윙'],['all','전체']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
+ <p className="text-sm text-slate-600">{range.join(' ~ ')} · 광고비 {available.length}/{dates.length}일 · 직접·간접 전환 {conversionAvailable.length}/{dates.length}일</p><p className="text-sm text-blue-700 whitespace-pre-wrap" role="status">{status}</p>
+ {conversionsMissing&&<div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">선택한 판매방식·기간의 직접·간접 전환 자료가 없습니다. 「선택 기간 수집 / 새로고침」을 눌러 맞춤보고서에서 가져오세요. 전환 수집기 업데이트가 필요하다는 안내가 나오면 확장 프로그램 폴더의 background.js를 교체하고 확장 프로그램을 새로고침해주세요. 엑셀 반영도 가능합니다. 기간 일부만 반영된 경우에도 합계와 ROAS는 표시하지 않습니다.</div>}
  </div><div className="grid grid-cols-2 xl:grid-cols-5 gap-4">{[['집행 광고비 (기존 원본)',totals.costPartial?'미수집 포함':show(totals.spend)+'원'],[conversionLabel+' 전환 판매수량',totals.partial?'전환 자료 미수집':show(totals.units)],[conversionLabel+' 전환 매출',totals.partial?'전환 자료 미수집':show(totals.sales)+'원'],['ROAS',roas({...totals,spend:totals.costPartial?null:totals.spend,sales:totals.partial?null:totals.sales})],['구매 전환율',cvr({...totals,orders:totals.partial?null:totals.orders})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{rows.length?value:'—'}</strong></div>)}</div>
  <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{[...(mode==='daily'?['날짜']:[]),'캠페인','구분','광고비 (원)',conversionLabel+' 판매수량',conversionLabel+' 매출 (원)','ROAS','구매 전환율'].map(t=><th key={t} className="p-4 text-left">{t}</th>)}</tr></thead><tbody>{(mode==='daily'?rows.sort((a,b)=>b.date.localeCompare(a.date)||b.spend-a.spend):grouped).map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold">{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{show(r.spend)}</td><td className="p-4">{show(r.units)}</td><td className="p-4">{show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
- <p className="text-xs text-slate-500">기존 자동 수집은 총 전환만 제공하므로 직접·간접 값으로 대체하지 않습니다. 해당 날짜의 맞춤보고서가 반영되지 않으면 미수집으로 표시합니다. 정산 청구액 자동 연동은 아직 미완료이며 위 광고비·ROAS는 기존 집행 광고비 원본 기준입니다.</p></section>;
+ <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 정산 청구액 자동 연동은 아직 미완료이며 위 광고비·ROAS는 기존 집행 광고비 원본 기준입니다.</p></section>;
 }
 
 function App() {
@@ -1073,7 +1078,7 @@ function App() {
           for(const [date,day] of Object.entries(incoming)){const types=new Set(day.rows.map(r=>r.supplier));merged[date]={...day,rows:[...(merged[date]?.rows||[]).filter(r=>!types.has(r.supplier)),...day.rows]};}
           if(new Blob([JSON.stringify({...raw,adConversionDays:merged})]).size>900000)throw Error('저장 공간이 부족해 반영하지 않았습니다.');
           tx.update(ref,{adConversionDays:merged});});
-        setAdsStatus(Object.keys(incoming).length+'일의 직접·간접 전환 보고서를 반영했습니다. 보고서에 포함된 판매방식/날짜는 교체했습니다.');
+        setAdsStatus(Object.keys(incoming).length+'일의 직접·간접 전환 보고서 반영 완료 · '+Object.keys(incoming).sort()[0]+' ~ '+Object.keys(incoming).sort().at(-1)+' · 조회 기간과 판매방식을 확인해주세요.');
       }catch(e){setAdsStatus('맞춤보고서 반영 실패: '+String(e.message||e));}
       finally{adsBusyRef.current=false;setAdsBusy(false);}
     };
@@ -1083,22 +1088,23 @@ function App() {
       try{
         if(!useFirebase)throw Error('클라우드 연결을 확인해주세요.');
         const ping=await bridgeRequest('YORGO_STOCK_PING');
-        if(!ping.ok||String(ping.version||'').split('.').slice(0,2).join('.')!=='1.1')throw Error('광고 연동용 확장 프로그램 1.1을 설치한 뒤 이 페이지를 새로고침해주세요.');
+        if(!ping.ok||!ping.adsConversion14)throw Error('전환 수집기 업데이트가 필요합니다. 확장 프로그램 폴더의 background.js를 V79 파일로 교체한 뒤 확장 프로그램 새로고침 및 웹페이지 새로고침을 해주세요.');
         const today=todayKst(),full=range||[adsRange('lastmonth')[0],today];
         const all=adsDates(...full),refresh=adsRange('week')[0];
-        const dates=all.filter(date=>range||!adsDays[date]||date>=refresh).sort((a,b)=>b.localeCompare(a));
+        const dates=all.filter(date=>range||!adConversionDays[date]||date>=refresh).sort((a,b)=>b.localeCompare(a));
         let count=0;
         for(const date of dates){
           setAdsStatus(`광고 수집 ${count+1}/${dates.length} · ${date} (광고센터 화면을 조작하지 마세요)`);
-          const response=await bridgeRequest('YORGO_ADS_FETCH',[date],120000);
+          const response=await bridgeRequest('YORGO_ADS_FETCH',[date],140000);
           if(!response.ok)throw Error(response.message||response.status||'광고 조회 실패');
-          const day=response.day;
-          if(day?.date!==date||!Array.isArray(day.rows)||!day.rows.length||day.rows.some(r=>typeof r.name!=='string'||typeof r.supplier!=='boolean'||!Number.isFinite(r.spend)||r.spend<0||(!day.partial&&(!Number.isFinite(r.sales)||!Number.isSafeInteger(r.units)||r.units<0))))throw Error('광고 결과 형식이 올바르지 않아 저장을 중단했습니다.');
+          const day=response.conversionDay;
+          if(day?.date!==date||day.complete!==true||day.basis!=='14-day-attribution'||!Array.isArray(day.rows)||!day.rows.length||day.rows.some(r=>typeof r.name!=='string'||!r.name.trim()||typeof r.supplier!=='boolean'||!Number.isSafeInteger(r.clicks)||r.clicks<0||['direct','indirect'].some(mode=>['orders','units','sales'].some(k=>!Number.isFinite(r[mode]?.[k])||r[mode][k]<0||(k!=='sales'&&!Number.isSafeInteger(r[mode][k]))))))throw Error('직접·간접 전환 결과 형식이 올바르지 않아 저장을 중단했습니다.');
           const ref=db.doc('yomimon_dashboard/inventory_master');
-          await db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('클라우드 원본이 없습니다.');const raw=snap.data(),next={...(raw.adsDays||{}),[date]:day};if(new Blob([JSON.stringify({...raw,adsDays:next})]).size>900000)throw Error('저장 공간이 부족합니다.');tx.update(ref,{adsDays:next,adsUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()});});
-          setAdsDays(previous=>({...previous,[date]:day}));count++;
+          await db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw Error('클라우드 원본이 없습니다.');const raw=snap.data(),next={...(raw.adConversionDays||{}),[date]:day};if(new Blob([JSON.stringify({...raw,adConversionDays:next})]).size>900000)throw Error('저장 공간이 부족합니다.');tx.update(ref,{adConversionDays:next,adsUpdatedAt:firebase.firestore.FieldValue.serverTimestamp()});});
+          setAdConversionDays(previous=>({...previous,[date]:day}));count++;
+
         }
-        setAdsStatus(`${count}일 광고 성과 저장 완료 · `+new Date().toLocaleString('ko-KR'));
+        setAdsStatus(`${count}일 직접·간접 전환 저장 완료 · 맞춤보고서 일별·14일 지표 · `+new Date().toLocaleString('ko-KR'));
       }catch(e){setAdsStatus('광고 수집 중단: '+String(e.message||e)+' · 이전에 저장된 날짜는 유지됩니다.');}
       finally{adsBusyRef.current=false;setAdsBusy(false);}
     };
@@ -1759,3 +1765,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
