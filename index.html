@@ -75,7 +75,7 @@
 
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
-const SECRET_PASSWORD = "0501";
+
 const APP_VERSION = 85;
 const APP_UPDATED_AT = "2026-10-30 21:51"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
@@ -1411,11 +1411,38 @@ function App() {
         finally{excelBusyRef.current=false;setExcelBusy(false);}
     };
 
-    const handleLogin=ev=>{
-        ev.preventDefault();
-        if(pwd===SECRET_PASSWORD){setLoggedIn(true);try{localStorage.setItem("ili_date",getTodayKey());}catch(e){}}
-        else{setPwdErr(true);setPwd("");}
-    };
+ 
+const handleLogin = async ev => {
+    ev.preventDefault();
+
+    try {
+        const response = await fetch(
+            "https://yorgo-auth.netlify.app/.netlify/functions/check-pin",
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pin: pwd })
+            }
+        );
+
+        if (!response.ok) throw new Error("서버 오류");
+
+        const result = await response.json();
+
+        if (result.ok) {
+            setLoggedIn(true);
+            try {
+                localStorage.setItem("ili_date", getTodayKey());
+            } catch(e) {}
+        } else {
+            setPwdErr(true);
+            setPwd("");
+        }
+    } catch(error) {
+        alert("인증 서버 연결에 실패했습니다.");
+    }
+};
+
 
     const ModeBtns=({mode,setMode,color="blue"})=>(
         <>
