@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v94)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v95)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -68,6 +68,31 @@
         .rocket-grid tbody td.fc1 {font-weight:600;}
         .rocket-grid tbody td.fc3 {color:#64748B;}
         .rocket-grid tbody tr:hover td {filter:brightness(0.985);}
+
+        .ads-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+        .ads-basis{font-size:12px;color:#64748b}.ads-basis summary{cursor:pointer;width:fit-content}.ads-basis p{margin-top:8px;line-height:1.6}
+        .ads-filters{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;padding:16px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;align-items:start}
+        .ads-filters>div{align-items:center}.ads-filters input[type=date]{min-height:42px;min-width:138px;background:white}.ads-filters input[placeholder]{flex:1;min-width:160px}
+        @media(max-width:1250px){.ads-filters{grid-template-columns:minmax(0,1fr)}}
+        .ads-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}
+        .ads-actions button{min-height:44px;padding:11px 18px;border-radius:10px;font-size:14px;font-weight:700;white-space:nowrap}
+        .ads-actions button:disabled{opacity:.5;cursor:wait}
+        .ads-query{background:#2563eb;color:#fff;border:1px solid #2563eb}
+        .ads-query:hover{background:#1d4ed8}
+        .ads-refresh{background:#fff7ed;color:#9a3412;border:1px solid #fdba74}
+        .ads-refresh:hover{background:#ffedd5}
+        .ads-cancel{background:#fff1f2;color:#be123c;border:1px solid #fda4af}
+        .ads-options{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:4px}
+        .ads-segment{display:inline-flex;gap:4px;border-radius:12px;background:#f1f5f9;padding:4px;flex-wrap:wrap}
+        .ads-segment button{padding:9px 16px;border-radius:9px;font-size:14px;font-weight:700;color:#475569}
+        .ads-segment button.ads-selected{background:#334155;color:white}
+        .ads-imports{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+        .ads-imports>label:not(.ads-show-tab){border:1px solid #a7f3d0;color:#047857;background:#ecfdf5;border-radius:9px;padding:9px 12px;font-size:13px;cursor:pointer;white-space:nowrap}
+        .ads-show-tab{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#64748b;margin-left:6px}
+        .ads-panel [aria-label="광고 배송 유형"] button[aria-pressed="true"]{background:#334155;color:#fff}
+        .ads-panel button[aria-pressed="true"]:not(.ads-query):not(.ads-selected){background:#334155;border-color:#334155;color:white}
+        .ads-panel button:focus-visible,.ads-imports label:focus-within{outline:2px solid #60a5fa;outline-offset:3px}
+        @media(max-width:760px){.ads-heading{gap:14px}.ads-actions{margin-left:0;width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.ads-actions button{padding:10px 8px;font-size:13px;white-space:normal}.ads-options{align-items:flex-start}.ads-segment{width:100%}.ads-segment button{flex:1;padding:9px 8px;font-size:12px}.ads-imports{width:100%}.ads-show-tab{margin-left:0}}
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -76,8 +101,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 94;
-const APP_UPDATED_AT = "2026-11-01 00:36"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 95;
+const APP_UPDATED_AT = "2026-11-01 00:56"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -804,22 +829,41 @@ const adsConversionSummary=(dates,conversionDays,conversionMode,matches=()=>true
  return totals;
 };
 const adsJoinMetrics=(date,costRows,conversionRows,complete)=>{
- const key=r=>JSON.stringify([String(r.name||'').trim(),r.supplier]);
- const canonical=r=>JSON.stringify([adsNameKey(r.name),r.supplier]);
- const base=new Map(costRows.map(r=>[key(r),{...r,date,sales:null,units:null,orders:null,clicks:null,conversionLinkMissing:complete}]));
- const matches=new Map(),reportCounts=new Map();
- for(const [k,r] of base){const c=canonical(r);matches.set(c,[...(matches.get(c)||[]),k]);}
- for(const r of conversionRows){const c=canonical(r);reportCounts.set(c,(reportCounts.get(c)||0)+1);}
- for(const r of conversionRows){
-  const exact=key(r),c=canonical(r),candidates=matches.get(c)||[];
-  const target=base.has(exact)?exact:(candidates.length===1&&reportCounts.get(c)===1?candidates[0]:exact);
-  const existing=base.get(target);
-  base.set(target,{...(existing||{name:String(r.name||'').trim(),supplier:r.supplier,date,spend:null}),sales:r.sales,units:r.units,orders:r.orders,clicks:r.clicks,conversionLinkMissing:false});
+ const result=costRows.map(row=>({...row,date,sales:null,units:null,orders:null,clicks:null}));
+ const used=new Set(),linked=new Set();
+ const normalized=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+ const tokens=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/^(로켓배송|로켓|윙)[\s_\-]*/,'').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+ const connect=(i,j,basis)=>{const source=conversionRows[j],old=result[i];result[i]={...old,name:source.name,sales:source.sales,units:source.units,orders:source.orders,clicks:source.clicks,settlementName:old.name,conversionName:source.name,matchBasis:basis};used.add(j);linked.add(i);};
+ // Reserve unambiguous exact matches first; a renamed campaign must never
+ // take a conversion row already assigned to another campaign.
+ for(const basis of ['exact','format']){
+  const candidate=(i,j)=>result[i].supplier===conversionRows[j].supplier&&(basis==='exact'?adsNameKey(result[i].name)===adsNameKey(conversionRows[j].name):normalized(result[i].name)===normalized(conversionRows[j].name));
+  for(let i=0;i<result.length;i++){
+   if(linked.has(i))continue;
+   const js=conversionRows.map((_,j)=>j).filter(j=>!used.has(j)&&candidate(i,j));
+   if(js.length!==1)continue;
+   const owners=result.map((_,k)=>k).filter(k=>!linked.has(k)&&candidate(k,js[0]));
+   if(owners.length===1)connect(i,js[0],basis);
+  }
  }
- // Only the existing, safe zero-spend omission rule is used. Campaign names
- // can change between reports; never manufacture conversions for a paid row.
- if(complete)for(const r of base.values())if((r.spend===0||r.net===0)&&r.sales===null){r.sales=0;r.units=0;r.orders=0;r.clicks=0;r.conversionLinkMissing=false;}
- return [...base.values()];
+ const similar=(i,j)=>{
+  if(result[i].supplier!==conversionRows[j].supplier)return false;
+  const a=tokens(result[i].name),b=tokens(conversionRows[j].name);
+  if(!a.length||!b.length||Math.min(a.join('').length,b.join('').length)<3)return false;
+  return a.every(token=>b.includes(token))||b.every(token=>a.includes(token));
+ };
+ // Product additions/removals can change the label. Use only a unique,
+ // reciprocal remaining token match. Ambiguous rows remain separate.
+ for(let i=0;i<result.length;i++){
+  if(linked.has(i))continue;
+  const js=conversionRows.map((_,j)=>j).filter(j=>!used.has(j)&&similar(i,j));
+  if(js.length!==1)continue;
+  const owners=result.map((_,k)=>k).filter(k=>!linked.has(k)&&similar(k,js[0]));
+  if(owners.length===1)connect(i,js[0],'name-similarity');
+ }
+ for(let j=0;j<conversionRows.length;j++)if(!used.has(j))result.push({...conversionRows[j],date,spend:null});
+ if(complete)for(const row of result)if((row.spend===0||row.net===0)&&row.sales==null){row.sales=0;row.units=0;row.orders=0;row.clicks=0;}
+ return result;
 };
 const adsMergeDay=(date,costDay,conversionDay,conversionMode)=>adsJoinMetrics(date,costDay?.rows||[],(conversionDay?.rows||[]).map(r=>{
  const metrics=adsConversionMetrics(r,conversionMode);
@@ -909,27 +953,27 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const rows=dates.flatMap(date=>adsMergeDay(date,{rows:adsBillingRows(billingDays[date])},conversionDays[date],conversionMode)).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
  const grouped=adsMergePeriod(dates,billingDays,conversionDays,conversionMode).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
  const totals=adsConversionSummary(dates,conversionDays,conversionMode,r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
- const unlinked=grouped.filter(r=>r.conversionLinkMissing&&r.spend>0);
  const displayRows=adsSortRows(mode==='daily'?rows:grouped,sort);
  const columns=[...(mode==='daily'?[['date','날짜']]:[]),['name','캠페인'],['supplier','구분'],['spend','청구액·VAT 배분 (원)'],['units',conversionLabel+' 판매수량'],['sales',conversionLabel+' 매출·원본 (원)'],['roas','ROAS·청구액 기준'],['cvr','구매 전환율']];
  const toggleSort=key=>setSort(previous=>({key,direction:previous.key===key?(previous.direction==='asc'?'desc':'asc'):['name','supplier','date'].includes(key)?'asc':'desc'}));
  const show=n=>n==null?'미수집':Number(n).toLocaleString('ko-KR');const roas=r=>r.sales==null||r.spend==null?'—':r.spend>0?(r.sales/r.spend*100).toFixed(2)+'%':'—';
  const cvr=r=>r.orders==null||!r.clicks?'—':(r.orders/r.clicks*100).toFixed(2)+'%';
- return <section className="m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">{conversionDescription} · 14일 기여 기준</p></div><button disabled={busy} onClick={()=>onSync(range,{showTab})} className="bg-blue-600 text-white rounded-xl px-5 py-2 font-bold disabled:opacity-50">{busy?'광고 수집 중…':'저장 자료 조회 / 누락분 수집'}</button><button type="button" disabled={busy} onClick={()=>onSync(range,{showTab,refresh:true})} className="border border-blue-300 text-blue-700 rounded-xl px-4 py-2 font-bold disabled:opacity-50">최신 자료로 갱신</button>{busy&&<button type="button" onClick={onCancel} className="border border-red-300 rounded-xl px-5 py-2 font-bold text-red-700">수집 중단</button>}</div>
- <div className="flex flex-wrap items-center gap-3"><label className="inline-flex items-center gap-2 text-xs text-slate-500"><input type="checkbox" checked={showTab} disabled={busy} onChange={e=>setShowTab(e.target.checked)}/>수집 화면 표시 (선택)</label><div role="group" aria-label="전환 유형" className="inline-flex gap-1 rounded-xl bg-slate-100 p-1">{[['total','총 전환 (직접+간접)'],['direct','직접 전환'],['indirect','간접 전환']].map(([key,label])=><button key={key} type="button" aria-pressed={conversionMode===key} onClick={()=>setConversionMode(key)} className={`rounded-lg px-5 py-2 font-bold text-sm ${conversionMode===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><label className="border rounded-lg px-4 py-2 text-sm cursor-pointer bg-white">맞춤보고서 엑셀 반영<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onReportImport(file);e.target.value='';}}/></label><label className="border rounded-lg px-4 py-2 text-sm cursor-pointer bg-white">정산보고서 엑셀 반영<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onBillingImport(file);e.target.value='';}}/></label></div>
- <p className="text-xs text-slate-500">날짜·기간을 바꾸면 보관 중인 자료를 즉시 표시합니다. 누락분 수집은 저장되지 않은 보고서만 월별로 가져옵니다. 최신 수치를 다시 받으려면 ‘최신 자료로 갱신’을 누르세요. 어제까지 선택할 수 있습니다.</p>
- <p className="text-sm text-blue-800 font-semibold">총 전환 = 직접 전환 + 간접 전환 · 쿠팡 대시보드 전환 매출은 같은 기간·판매방식의 총 전환과 비교하세요.</p>
+ return <section className="ads-panel m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"> <div className="ads-heading"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">{conversionDescription} · 14일 기여 기준</p></div><div className="ads-actions" role="group" aria-label="광고 자료 조회 작업"><button type="button" disabled={busy} onClick={()=>onSync(range,{showTab})} className="ads-query" title="보관 자료를 먼저 표시하고 빠진 보고서만 가져옵니다.">{busy?'자료 처리 중…':'조회 / 누락분 수집'}</button><button type="button" disabled={busy} onClick={()=>onSync(range,{showTab,refresh:true})} className="ads-refresh" title="저장된 자료가 있어도 선택 기간 전체를 쿠팡에서 다시 가져옵니다.">쿠팡에서 다시 받기</button>{busy&&<button type="button" onClick={onCancel} className="ads-cancel">수집 중단</button>}</div></div>
+ <div className="ads-options"><div role="group" aria-label="전환 유형" className="ads-segment">{[['total','총 전환 (직접+간접)'],['direct','직접 전환'],['indirect','간접 전환']].map(([key,label])=><button key={key} type="button" aria-pressed={conversionMode===key} onClick={()=>setConversionMode(key)} className={conversionMode===key?'ads-selected':''}>{label}</button>)}</div><div className="ads-imports" role="group" aria-label="엑셀 반영"><label>맞춤보고서 엑셀<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onReportImport(file);e.target.value='';}}/></label><label>정산보고서 엑셀<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onBillingImport(file);e.target.value='';}}/></label><label className="ads-show-tab"><input type="checkbox" checked={showTab} disabled={busy} onChange={e=>setShowTab(e.target.checked)}/>수집 화면 표시</label></div></div>
+ <p className="text-xs text-slate-500">기간을 바꾸면 보관 자료를 바로 표시합니다. ‘조회 / 누락분 수집’은 빠진 보고서만, ‘쿠팡에서 다시 받기’는 선택 기간 전체를 다시 가져옵니다.</p>
+ <details className="ads-basis"><summary>지표 기준 · 출처</summary> <p className="text-sm text-blue-800 font-semibold">총 전환 = 직접 전환 + 간접 전환 · 쿠팡 대시보드 전환 매출은 같은 기간·판매방식의 총 전환과 비교하세요.</p>
  <p className="text-xs text-slate-500">출처: 쿠팡 광고센터 → 광고보고서 → 맞춤 보고서 → 맞춤 보고서 → 일별. 현재 <strong>{conversionDescription}의 주문수·판매수량·전환 매출액(14일)</strong>입니다. 광고 클릭에 귀속된 실적이며 실제 구매일 기준 실적은 아닙니다.</p>
- <div className="flex flex-wrap gap-2">{[['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달'],['year','올해']].map(([key,label])=><button key={key} disabled={busy||(key==='month'&&todayKst().slice(8)==='01')||(key==='year'&&todayKst().slice(5)==='01-01')} onClick={()=>{setRange(adsRange(key));setSelectedPreset(key);}} aria-pressed={selectedPreset===key} className={`border rounded-lg px-4 py-2 font-bold transition-colors ${selectedPreset===key?"bg-blue-600 border-blue-600 text-white shadow-sm":"bg-white border-slate-200 text-slate-600 hover:bg-blue-50"}`}>{label}</button>)}<AdsSingleDayPicker value={range[0]} latest={adsLatestDate()} active={selectedPreset==='single'} disabled={busy} onSelect={date=>{setRange([date,date]);setSelectedPreset('single');}}/><input aria-label="광고 시작일" type="date" value={range[0]} max={adsLatestDate()} disabled={busy} onChange={e=>{if(e.target.value>adsLatestDate())return;setRange([e.target.value,range[1]]);setSelectedPreset(null);}} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={adsLatestDate()} disabled={busy} onChange={e=>{if(e.target.value>adsLatestDate())return;setRange([range[0],e.target.value]);setSelectedPreset(null);}} className="border rounded-lg px-3"/>{selectedPreset===null&&<span className="self-center text-xs font-bold text-blue-700">직접 설정</span>}</div>
+</details>
+ <div className="ads-filters"> <div className="flex flex-wrap gap-2">{[['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달'],['year','올해']].map(([key,label])=><button key={key} disabled={busy||(key==='month'&&todayKst().slice(8)==='01')||(key==='year'&&todayKst().slice(5)==='01-01')} onClick={()=>{setRange(adsRange(key));setSelectedPreset(key);}} aria-pressed={selectedPreset===key} className={`border rounded-lg px-4 py-2 font-bold transition-colors ${selectedPreset===key?"bg-blue-600 border-blue-600 text-white shadow-sm":"bg-white border-slate-200 text-slate-600 hover:bg-blue-50"}`}>{label}</button>)}<AdsSingleDayPicker value={range[0]} latest={adsLatestDate()} active={selectedPreset==='single'} disabled={busy} onSelect={date=>{setRange([date,date]);setSelectedPreset('single');}}/><input aria-label="광고 시작일" type="date" value={range[0]} max={adsLatestDate()} disabled={busy} onChange={e=>{if(e.target.value>adsLatestDate())return;setRange([e.target.value,range[1]]);setSelectedPreset(null);}} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={adsLatestDate()} disabled={busy} onChange={e=>{if(e.target.value>adsLatestDate())return;setRange([range[0],e.target.value]);setSelectedPreset(null);}} className="border rounded-lg px-3"/>{selectedPreset===null&&<span className="self-center text-xs font-bold text-blue-700">직접 설정</span>}</div>
  <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['supplier','로켓배송'],['wing','윙'],['all','전체']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
+</div>
  {!busy&&dates.length>0&&<p className="text-sm font-semibold text-emerald-700" role="note">저장된 자료에서 표시합니다. 날짜 변경 시 쿠팡에 접속하지 않습니다. 누락된 자료만 수집 버튼으로 가져올 수 있습니다.</p>}
  <p className="text-sm text-slate-600">{range.join(' ~ ')} · 로켓 청구액 {dates.filter(d=>billingDays[d]?.supplier?.complete).length}/{dates.length}일 · 윙 청구액 {dates.filter(d=>billingDays[d]?.wing?.complete).length}/{dates.length}일 · 로켓·윙 전환 {conversionAvailable.length}/{dates.length}일</p><p className="text-sm text-blue-700 whitespace-pre-wrap" role="status">{showJob?status:'선택 기간의 보관 자료를 표시합니다.'}</p>
  {showJob&&<AdsProgress job={job} busy={busy}/>}
  {failedFile&&failedFile.startDate===range[0]&&failedFile.endDate===range[1]&&<div role="note" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 space-y-2"><p>읽기에 실패한 {failedFile.kind==='supplier'?'로켓':failedFile.kind==='wing'?'윙':'전환'} 원본 · {failedFile.startDate} ~ {failedFile.endDate}. 이 파일을 보존했습니다.</p><a href={failedFile.url} download={failedFile.filename} className="inline-block rounded-lg border border-blue-300 bg-white px-3 py-2 font-bold">오류 원본 엑셀 내려받기</a><details><summary className="cursor-pointer">수집 파일의 열 이름 확인</summary><p className="mt-2 break-words">{failedFile.headers.length?failedFile.headers.join(' · '):'엑셀 파일을 읽지 못해 열 이름을 확인할 수 없습니다.'}</p></details></div>}
- {unlinked.length>0&&!conversionsMissing&&<p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">전환 합계는 수집된 맞춤보고서 원본 전체입니다. 정산에만 있는 캠페인명 {unlinked.length}개는 전환 행과 연결되지 않아 표에 ‘연결 미확인’으로 표시합니다. 캠페인명을 추측해서 합치거나 전환을 0으로 바꾸지 않습니다.</p>}
  {conversionsMissing&&<div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">선택 기간 중 전환 자료가 없는 날짜: {missingConversionDates.slice(0,7).join(', ')}{missingConversionDates.length>7?' 외 '+(missingConversionDates.length-7)+'일':''}. 이미 저장된 날짜의 자료는 보존됩니다. 전체 기간이 모여야 기간 합계를 표시합니다.</div>}
  </div><div className="grid grid-cols-2 xl:grid-cols-5 gap-4">{[['청구 광고비 (부가세 포함)',billingTotal==null?'청구액 미수집':show(billingTotal)+'원'],[conversionLabel+' 전환 판매수량',totals.partial?'전환 자료 미수집':show(totals.units)],[conversionLabel+' 전환 매출',totals.partial?'전환 자료 미수집':show(totals.sales)+'원'],['ROAS (청구액 기준)',roas({...totals,spend:billingTotal,sales:totals.partial?null:totals.sales})],['구매 전환율',cvr({...totals,orders:totals.partial?null:totals.orders})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{value}</strong></div>)}</div>
- <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold">{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'캠페인별 원본 미제공':show(r.spend)}</td><td className="p-4">{r.conversionLinkMissing?'연결 미확인':show(r.units)}</td><td className="p-4">{r.conversionLinkMissing?'연결 미확인':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
+ <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
  <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 광고비 합계는 일별 정산 보고서의 청구금액(+부가가치세) 원본입니다. ROAS는 이 청구액 기준으로 계산합니다. 캠페인별 금액은 원본의 청구 가능 광고비에 같은 과세 그룹의 실제 부가세를 비례 배분한 금액입니다. 원 단위 차이는 배분하여 합계를 원본과 맞춥니다. 캠페인별 배분액은 별도로 청구된 확정액이 아닙니다. 전환 매출은 맞춤보고서 주문금액 원본이며 부가세 포함 여부는 아직 확인되지 않았습니다. 임의로 10%를 더하지 않습니다.</p></section>;
 }
 
@@ -2162,6 +2206,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
