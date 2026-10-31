@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v91)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v93)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -76,8 +76,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 91;
-const APP_UPDATED_AT = "2026-10-31 22:43"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 93;
+const APP_UPDATED_AT = "2026-10-31 23:44"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -688,29 +688,63 @@ const adsBillingRows=day=>{
 };
 const adsNameKey=name=>String(name||'').trim().replace(/\s+/g,' ');
 const adsConversionMetrics=(row,mode)=>{
- if(mode!=='total')return row[mode]||null;
- const keys=['orders','units','sales'],a=row.direct,b=row.indirect;
- if(!a||!b||keys.some(k=>!Number.isFinite(a[k])||!Number.isFinite(b[k])||a[k]<0||b[k]<0))return null;
- return Object.fromEntries(keys.map(k=>[k,a[k]+b[k]]));
+ const keys=['orders','units','sales'],valid=value=>value&&keys.every(k=>Number.isFinite(value[k])&&value[k]>=0);
+ if(mode!=='total')return valid(row[mode])?row[mode]:null;
+ const a=row.direct,b=row.indirect;
+ return valid(a)&&valid(b)?Object.fromEntries(keys.map(k=>[k,a[k]+b[k]])):null;
 };
-const adsMergeDay=(date,costDay,conversionDay,conversionMode)=>{
+// Conversion totals come from the complete conversion report. A settlement
+// campaign-name join must never decide whether that report was collected.
+const adsConversionSummary=(dates,conversionDays,conversionMode,matches=()=>true)=>{
+ const totals={sales:0,units:0,orders:0,clicks:0,partial:dates.length===0};
+ for(const date of dates){
+  const day=conversionDays[date];
+  if(day?.complete!==true||!Array.isArray(day.rows)){totals.partial=true;continue;}
+  for(const row of day.rows){
+   if(!matches(row))continue;
+   const metrics=adsConversionMetrics(row,conversionMode);
+   if(!metrics||!Number.isFinite(row.clicks)||row.clicks<0){totals.partial=true;continue;}
+   for(const key of ['sales','units','orders'])totals[key]+=metrics[key];
+   totals.clicks+=row.clicks;
+  }
+ }
+ return totals;
+};
+const adsJoinMetrics=(date,costRows,conversionRows,complete)=>{
  const key=r=>JSON.stringify([String(r.name||'').trim(),r.supplier]);
  const canonical=r=>JSON.stringify([adsNameKey(r.name),r.supplier]);
- const base=new Map((costDay?.rows||[]).map(r=>[key(r),{...r,date,sales:null,units:null,orders:null,clicks:null}]));
+ const base=new Map(costRows.map(r=>[key(r),{...r,date,sales:null,units:null,orders:null,clicks:null,conversionLinkMissing:complete}]));
  const matches=new Map(),reportCounts=new Map();
  for(const [k,r] of base){const c=canonical(r);matches.set(c,[...(matches.get(c)||[]),k]);}
- for(const r of conversionDay?.rows||[]){const c=canonical(r);reportCounts.set(c,(reportCounts.get(c)||0)+1);}
- for(const r of conversionDay?.rows||[]){
+ for(const r of conversionRows){const c=canonical(r);reportCounts.set(c,(reportCounts.get(c)||0)+1);}
+ for(const r of conversionRows){
   const exact=key(r),c=canonical(r),candidates=matches.get(c)||[];
   const target=base.has(exact)?exact:(candidates.length===1&&reportCounts.get(c)===1?candidates[0]:exact);
-  const existing=base.get(target),metrics=adsConversionMetrics(r,conversionMode);
-  if(!metrics)continue;
-  base.set(target,{...(existing||{name:String(r.name||'').trim(),supplier:r.supplier,date,spend:null}),...metrics,clicks:r.clicks});
+  const existing=base.get(target);
+  base.set(target,{...(existing||{name:String(r.name||'').trim(),supplier:r.supplier,date,spend:null}),sales:r.sales,units:r.units,orders:r.orders,clicks:r.clicks,conversionLinkMissing:false});
  }
- // A complete all-campaign report can omit campaigns with no activity. Never infer zero for a campaign with spend.
- if(conversionDay?.complete===true)for(const r of base.values())if((r.spend===0||r.net===0)&&r.sales===null){r.sales=0;r.units=0;r.orders=0;r.clicks=0;}
+ // Only the existing, safe zero-spend omission rule is used. Campaign names
+ // can change between reports; never manufacture conversions for a paid row.
+ if(complete)for(const r of base.values())if((r.spend===0||r.net===0)&&r.sales===null){r.sales=0;r.units=0;r.orders=0;r.clicks=0;r.conversionLinkMissing=false;}
  return [...base.values()];
 };
+const adsMergeDay=(date,costDay,conversionDay,conversionMode)=>adsJoinMetrics(date,costDay?.rows||[],(conversionDay?.rows||[]).map(r=>{
+ const metrics=adsConversionMetrics(r,conversionMode);
+ return {...r,...(metrics||{sales:null,units:null,orders:null}),clicks:r.clicks};
+}),conversionDay?.complete===true);
+const adsMergePeriod=(dates,billingDays,conversionDays,conversionMode)=>{
+ const complete=dates.length>0&&dates.every(date=>conversionDays[date]?.complete===true&&Array.isArray(conversionDays[date]?.rows));
+ const entries=dates.flatMap(date=>Object.values(billingDays[date]||{}).filter(entry=>entry?.complete===true));
+ const costs=adsBillingRows(entries).map(row=>({...row,spend:dates.every(date=>billingDays[date]?.[row.supplier?'supplier':'wing']?.complete===true)?row.spend:null}));
+ // Aggregate each source first. A missing daily name match must not erase
+ // valid values from the remaining days of this same campaign.
+ const conversions=adsAggregate(dates.flatMap(date=>(conversionDays[date]?.rows||[]).map(row=>({
+  name:row.name,supplier:row.supplier,spend:null,clicks:row.clicks,
+  ...((complete?adsConversionMetrics(row,conversionMode):null)||{sales:null,units:null,orders:null})
+ }))));
+ return adsJoinMetrics(null,costs,conversions,complete);
+};
+
 const adsSortRows=(rows,sort)=>{
  const metric=r=>sort.key==='roas'?(r.spend>0&&r.sales!=null?r.sales/r.spend:null):sort.key==='cvr'?(r.clicks>0&&r.orders!=null?r.orders/r.clicks:null):sort.key==='supplier'?(r.supplier?'로켓배송':'윙'):r[sort.key];
  return [...rows].sort((a,b)=>{const x=metric(a),y=metric(b),missing=v=>v==null||(typeof v==='number'&&!Number.isFinite(v));if(missing(x)||missing(y))return missing(x)===missing(y)?0:missing(x)?1:-1;const delta=typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y),'ko',{numeric:true});return (sort.direction==='asc'?delta:-delta)||String(a.name).localeCompare(String(b.name),'ko')||String(a.date||'').localeCompare(String(b.date||''));});
@@ -778,8 +812,9 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const conversionAvailable=dates.filter(d=>conversionDays[d]?.complete===true&&Array.isArray(conversionDays[d]?.rows));
  const conversionsMissing=conversionAvailable.length!==dates.length;
  const rows=dates.flatMap(date=>adsMergeDay(date,{rows:adsBillingRows(billingDays[date])},conversionDays[date],conversionMode)).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
- const grouped=adsAggregate(rows),totals=grouped.reduce((a,r)=>({spend:a.spend+(r.spend||0),sales:a.sales+(r.sales||0),units:a.units+(r.units||0),orders:a.orders+(r.orders||0),clicks:a.clicks+r.clicks,partial:a.partial||r.sales===null,costPartial:a.costPartial||r.spend===null}),{spend:0,sales:0,units:0,orders:0,clicks:0,partial:false,costPartial:false});
- totals.partial ||= conversionsMissing;
+ const grouped=adsMergePeriod(dates,billingDays,conversionDays,conversionMode).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
+ const totals=adsConversionSummary(dates,conversionDays,conversionMode,r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
+ const unlinked=grouped.filter(r=>r.conversionLinkMissing&&r.spend>0);
  const displayRows=adsSortRows(mode==='daily'?rows:grouped,sort);
  const columns=[...(mode==='daily'?[['date','날짜']]:[]),['name','캠페인'],['supplier','구분'],['spend','청구액·VAT 배분 (원)'],['units',conversionLabel+' 판매수량'],['sales',conversionLabel+' 매출·원본 (원)'],['roas','ROAS·청구액 기준'],['cvr','구매 전환율']];
  const toggleSort=key=>setSort(previous=>({key,direction:previous.key===key?(previous.direction==='asc'?'desc':'asc'):['name','supplier','date'].includes(key)?'asc':'desc'}));
@@ -794,9 +829,10 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['supplier','로켓배송'],['wing','윙'],['all','전체']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
  <p className="text-sm text-slate-600">{range.join(' ~ ')} · 로켓 청구액 {dates.filter(d=>billingDays[d]?.supplier?.complete).length}/{dates.length}일 · 윙 청구액 {dates.filter(d=>billingDays[d]?.wing?.complete).length}/{dates.length}일 · 로켓·윙 전환 {conversionAvailable.length}/{dates.length}일</p><p className="text-sm text-blue-700 whitespace-pre-wrap" role="status">{status}</p>
  <AdsProgress job={job} busy={busy}/>
+ {unlinked.length>0&&!conversionsMissing&&<p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">전환 합계는 수집된 맞춤보고서 원본 전체입니다. 정산에만 있는 캠페인명 {unlinked.length}개는 전환 행과 연결되지 않아 표에 ‘연결 미확인’으로 표시합니다. 캠페인명을 추측해서 합치거나 전환을 0으로 바꾸지 않습니다.</p>}
  {conversionsMissing&&<div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">선택 기간 중 전환 자료가 없는 날짜: {dates.filter(d=>!conversionAvailable.includes(d)).join(', ')}. 이미 저장된 날짜의 자료는 보존됩니다. 전체 기간이 모여야 기간 합계를 표시합니다.</div>}
- </div><div className="grid grid-cols-2 xl:grid-cols-5 gap-4">{[['청구 광고비 (부가세 포함)',billingTotal==null?'청구액 미수집':show(billingTotal)+'원'],[conversionLabel+' 전환 판매수량',totals.partial?'전환 자료 미수집':show(totals.units)],[conversionLabel+' 전환 매출',totals.partial?'전환 자료 미수집':show(totals.sales)+'원'],['ROAS (청구액 기준)',roas({...totals,spend:billingTotal,sales:totals.partial?null:totals.sales})],['구매 전환율',cvr({...totals,orders:totals.partial?null:totals.orders})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{rows.length?value:'—'}</strong></div>)}</div>
- <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold">{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'캠페인별 원본 미제공':show(r.spend)}</td><td className="p-4">{show(r.units)}</td><td className="p-4">{show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
+ </div><div className="grid grid-cols-2 xl:grid-cols-5 gap-4">{[['청구 광고비 (부가세 포함)',billingTotal==null?'청구액 미수집':show(billingTotal)+'원'],[conversionLabel+' 전환 판매수량',totals.partial?'전환 자료 미수집':show(totals.units)],[conversionLabel+' 전환 매출',totals.partial?'전환 자료 미수집':show(totals.sales)+'원'],['ROAS (청구액 기준)',roas({...totals,spend:billingTotal,sales:totals.partial?null:totals.sales})],['구매 전환율',cvr({...totals,orders:totals.partial?null:totals.orders})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{value}</strong></div>)}</div>
+ <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold">{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'캠페인별 원본 미제공':show(r.spend)}</td><td className="p-4">{r.conversionLinkMissing?'연결 미확인':show(r.units)}</td><td className="p-4">{r.conversionLinkMissing?'연결 미확인':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
  <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 광고비 합계는 일별 정산 보고서의 청구금액(+부가가치세) 원본입니다. ROAS는 이 청구액 기준으로 계산합니다. 캠페인별 금액은 원본의 청구 가능 광고비에 같은 과세 그룹의 실제 부가세를 비례 배분한 금액입니다. 원 단위 차이는 배분하여 합계를 원본과 맞춥니다. 캠페인별 배분액은 별도로 청구된 확정액이 아닙니다. 전환 매출은 맞춤보고서 주문금액 원본이며 부가세 포함 여부는 아직 확인되지 않았습니다. 임의로 10%를 더하지 않습니다.</p></section>;
 }
 
@@ -1253,7 +1289,7 @@ function App() {
         if(dates.at(-1)>=todayKst())throw Error('부가세 포함 정산 보고서는 어제까지 제공됩니다. 종료일을 어제 이전으로 설정해주세요.');
         const chunks=adsPeriodChunks(dates),sessionKey='period_'+Date.now()+'_'+Math.random().toString(36).slice(2);
         const ping=await bridgeRequest('YORGO_STOCK_PING');if(!current())return;
-        if(!ping.ok||!ping.adsPeriodExport||ping.bridgeRevision<88)throw Error('V88 background.js 교체 후 확장 프로그램과 웹페이지를 새로고침해주세요.');
+        if(!ping.ok||!ping.adsPeriodExport||(Number(ping.bridgeRevision)||0)<93)throw Error('V93 background.js 교체 후 확장 프로그램과 웹페이지를 새로고침해주세요.');
         const totalTasks=dates.length*3,totalReports=chunks.length*3;let reportIndex=0;
         for(const date of dates)saved.set(date,new Set());
         setAdsJob({phase:'collecting',done:0,total:dates.length,savedTasks:0,totalTasks,label:'기간 엑셀 원본 수집 시작 · 보고서 '+totalReports+'개',date:null});
@@ -1985,6 +2021,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
