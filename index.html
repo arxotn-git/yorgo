@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v99)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v100)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -101,8 +101,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 99;
-const APP_UPDATED_AT = "2026-11-01 15:12"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 100;
+const APP_UPDATED_AT = "2026-11-01 15:55"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -949,14 +949,21 @@ function AppFileInfo(){
 }
 
 function AdsProgress({job,busy}){
- if(!busy||!job||!['collecting','saving'].includes(job.phase))return null;
+ if(!job||job.phase==='complete')return null;
+ const stopped=['cancelled','cancelling'].includes(job.phase),running=busy&&['collecting','saving'].includes(job.phase),error=!running&&!stopped;
  const total=job.total||0,value=job.totalTasks?Math.min(100,Math.round((job.savedTasks||0)/job.totalTasks*100)):total?Math.min(100,Math.round((job.done||0)/total*100)):0;
- return <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-  <div role="progressbar" aria-label="광고 자료 수집 진행" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-valuetext={job.label||'수집 중'} className="relative h-3 rounded-full bg-slate-200 overflow-hidden">
-   <div className="h-full bg-blue-500 transition-all duration-300" style={{width:`${value}%`}}/>
-   <div aria-hidden="true" className="ads-loading-sweep absolute inset-y-0 w-1/3 rounded-full bg-blue-400/60"/>
+ const frame=stopped?'border-orange-300 bg-orange-50':error?'border-red-300 bg-red-50':'border-blue-200 bg-blue-50';
+ const track=stopped?'bg-orange-100':error?'bg-red-100':'bg-slate-200',fill=stopped?'bg-orange-500':error?'bg-red-500':'bg-blue-500';
+ const title=job.phase==='cancelling'?'수집 중단 처리 중':stopped?'수집 중단':job.phase==='login'?'로그인 필요':error?'수집 오류':'자료 수집 중';
+ const detail=job.errorMessage||job.label||title;
+ return <div className={`rounded-xl border p-3 ${frame}`}>
+  <div className={`mb-2 flex flex-wrap justify-between gap-2 text-sm ${stopped?'text-orange-900':error?'text-red-800':'text-blue-800'}`}><strong>{title}</strong><span className="text-xs">{job.date||''}</span></div>
+  <div role="progressbar" aria-label="광고 자료 수집 진행" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-valuetext={title+' · '+detail} className={`relative h-3 rounded-full overflow-hidden ${track}`}>
+   <div className={`h-full transition-all duration-300 ${fill}`} style={{width:`${value}%`}}/>
+   {running&&<div aria-hidden="true" className="ads-loading-sweep absolute inset-y-0 w-1/3 rounded-full bg-blue-400/60"/>}
   </div>
-  <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-slate-600"><span>{job.date?job.date+' · ':''}{job.label||'수집 중'}</span><span>{job.totalTasks?`이번 실행 ${job.savedTasks||0}/${job.totalTasks}건 처리`:''}</span></div>
+  <p role={error?'alert':'status'} className={`mt-2 whitespace-pre-wrap text-sm ${stopped?'text-orange-900':error?'text-red-800':'text-slate-600'}`}>{detail}</p>
+  {job.totalTasks>0&&<p className="mt-1 text-xs text-slate-600">이번 실행 {job.savedTasks||0}/{job.totalTasks}건 처리 · 저장된 자료는 유지됩니다.</p>}
  </div>;
 }
 
@@ -1010,6 +1017,7 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const conversionsMissing=conversionAvailable.length!==dates.length;
  const showJob=!job?.requestStart||(job.requestStart===range[0]&&job.requestEnd===range[1]);
  const jobNeedsLogin=showJob&&!busy&&job?.phase==='login';
+ const jobCancelled=showJob&&['cancelled','cancelling'].includes(job?.phase);
  const jobFailed=showJob&&!busy&&['error','partial','login'].includes(job?.phase);
  const missingConversionDates=dates.filter(date=>!conversionAvailable.includes(date));
  const campaignCatalog=useMemo(()=>adsCampaignCatalog(billingDays),[billingDays]);
@@ -1031,7 +1039,7 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['supplier','로켓배송'],['wing','윙'],['all','전체']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
 </div>
  {!busy&&dates.length>0&&<p className="text-sm font-semibold text-emerald-700" role="note">저장된 자료에서 표시합니다. 날짜 변경 시 쿠팡에 접속하지 않습니다. 누락된 자료만 수집 버튼으로 가져올 수 있습니다.</p>}
- <p className="text-sm text-slate-600">{range.join(' ~ ')} · 로켓 청구액 {dates.filter(d=>billingDays[d]?.supplier?.complete).length}/{dates.length}일 · 윙 청구액 {dates.filter(d=>billingDays[d]?.wing?.complete).length}/{dates.length}일 · 로켓·윙 전환 {conversionAvailable.length}/{dates.length}일</p><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><p className={`text-sm whitespace-pre-wrap ${jobFailed?'text-amber-800':busy?'text-blue-700':'text-emerald-700'}`} role="status">{showJob?status:'선택 기간의 보관 자료를 표시합니다.'}</p>{jobNeedsLogin&&<a className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1 text-sm font-bold text-amber-900" href="https://advertising.coupang.com/marketing/campaign/registration?goalType%3DSALES&_cap_client=SUPPLIERHUB" target="_blank" rel="noopener noreferrer">쿠팡 광고센터 로그인</a>}</div>
+ <p className="text-sm text-slate-600">{range.join(' ~ ')} · 로켓 청구액 {dates.filter(d=>billingDays[d]?.supplier?.complete).length}/{dates.length}일 · 윙 청구액 {dates.filter(d=>billingDays[d]?.wing?.complete).length}/{dates.length}일 · 로켓·윙 전환 {conversionAvailable.length}/{dates.length}일</p><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><p className={`text-sm whitespace-pre-wrap ${jobCancelled?'text-orange-800':jobFailed?'text-red-700':busy?'text-blue-700':'text-emerald-700'}`} role="status">{showJob?status:'선택 기간의 보관 자료를 표시합니다.'}</p>{jobNeedsLogin&&<a className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1 text-sm font-bold text-amber-900" href="https://advertising.coupang.com/marketing/campaign/registration?goalType%3DSALES&_cap_client=SUPPLIERHUB" target="_blank" rel="noopener noreferrer">쿠팡 광고센터 로그인</a>}</div>
  {showJob&&<AdsProgress job={job} busy={busy}/>}
  {failedFile&&failedFile.startDate===range[0]&&failedFile.endDate===range[1]&&<div role="note" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 space-y-2"><p>읽기에 실패한 {failedFile.kind==='supplier'?'로켓':failedFile.kind==='wing'?'윙':'전환'} 원본 · {failedFile.startDate} ~ {failedFile.endDate}. 이 파일을 보존했습니다.</p><a href={failedFile.url} download={failedFile.filename} className="inline-block rounded-lg border border-blue-300 bg-white px-3 py-2 font-bold">오류 원본 엑셀 내려받기</a><details><summary className="cursor-pointer">수집 파일의 열 이름 확인</summary><p className="mt-2 break-words">{failedFile.headers.length?failedFile.headers.join(' · '):'엑셀 파일을 읽지 못해 열 이름을 확인할 수 없습니다.'}</p></details></div>}
  {conversionsMissing&&<div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">선택 기간 중 전환 자료가 없는 날짜: {missingConversionDates.slice(0,7).join(', ')}{missingConversionDates.length>7?' 외 '+(missingConversionDates.length-7)+'일':''}. 이미 저장된 날짜의 자료는 보존됩니다. 전체 기간이 모여야 기간 합계를 표시합니다.</div>}
@@ -1505,9 +1513,9 @@ function App() {
     };
     const cancelAds=async()=>{
       adsRunRef.current++;
-      setAdsJob(previous=>({...previous,phase:'error',label:'수집 중단 요청 중'}));
-      try{const result=await bridgeRequest('YORGO_ADS_CANCEL',[],10000);if(!result.ok)throw Error(result.status);setAdsStatus('수집을 중단했습니다. 이미 저장한 자료는 보존했습니다.');setAdsJob(previous=>({...previous,phase:'error',label:'사용자가 수집을 중단했습니다.'}));}
-      catch(e){setAdsStatus('중단 응답을 확인하지 못했습니다: '+String(e.message||e)+' · 확장 프로그램을 새로고침해주세요.');}
+      setAdsJob(previous=>({...previous,phase:'cancelling',label:'수집 중단 요청을 처리하고 있습니다.'}));
+      try{const result=await bridgeRequest('YORGO_ADS_CANCEL',[],10000);if(!result.ok)throw Error(result.status);setAdsStatus('수집을 중단했습니다. 이미 저장한 자료는 보존했습니다.');setAdsJob(previous=>({...previous,phase:'cancelled',label:'사용자가 수집을 중단했습니다. 완료된 자료는 보관돼 있습니다.'}));}
+      catch(e){const reason='중단 응답을 확인하지 못했습니다: '+String(e.message||e);setAdsStatus(reason+' · 확장 프로그램을 새로고침해주세요.');setAdsJob(previous=>({...previous,phase:'error',label:reason,errorMessage:reason}));}
       finally{adsBusyRef.current=false;setAdsBusy(false);}
     };
     const syncAds = async (range=null,{showTab=false,refresh=false}={}) => {
@@ -1538,7 +1546,7 @@ function App() {
         }
         const sessionKey='period_'+Date.now()+'_'+Math.random().toString(36).slice(2);
         const ping=await bridgeRequest('YORGO_STOCK_PING');if(!current())return;
-        if(!ping.ok||!ping.adsPeriodExport||(Number(ping.bridgeRevision)||0)<93)throw Error('V93 background.js 교체 후 확장 프로그램과 웹페이지를 새로고침해주세요.');
+        if(!ping.ok||!ping.adsPeriodExport||(Number(ping.bridgeRevision)||0)<100)throw Error('V100 background.js 교체 후 확장 프로그램과 웹페이지를 새로고침해주세요.');
         setAdsJob({requestStart:dates[0],requestEnd:dates.at(-1),phase:'collecting',done:completed,total:dates.length,savedTasks,totalTasks,label:(refresh?'최신 자료 갱신':'보관 자료 확인 · 누락 보고서 수집')+' · 보고서 '+totalReports+'개',date:null});
         let reportIndex=0;
         for(const {chunk,kind} of plan.tasks){
@@ -1578,8 +1586,8 @@ function App() {
         if(!current())return;
         const reason=String(error.message||error),needsLogin=/로그인|LOGIN_REQUIRED|SESSION_EXPIRED/.test(reason);
         const action=refresh?'쿠팡 다시 받기':workerStarted?'누락 자료 수집':'자료 조회';
-        setAdsStatus(needsLogin?'쿠팡 광고센터 로그인이 필요합니다. 저장된 자료는 그대로 표시합니다.':action+'를 완료하지 못했습니다. '+reason+' · 기존 자료는 보존했습니다.');
-        setAdsJob(previous=>({...previous,requestStart:dates[0],requestEnd:dates.at(-1),phase:needsLogin?'login':savedTasks?'partial':'error',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,label:requestLabel+' · '+reason,refresh}));
+        setAdsStatus(needsLogin?'쿠팡 광고센터 로그인이 필요합니다. 저장된 자료는 그대로 표시합니다.':action+'를 완료하지 못했습니다. 저장된 자료는 그대로 표시합니다.');
+        setAdsJob(previous=>({...previous,requestStart:dates[0],requestEnd:dates.at(-1),phase:needsLogin?'login':savedTasks?'partial':'error',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,label:requestLabel+' · '+reason,errorMessage:reason,refresh}));
       }finally{
         if(current()){
           if(workerStarted)try{await bridgeRequest('YORGO_ADS_CANCEL',[],10000);}catch{}
@@ -2271,6 +2279,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
