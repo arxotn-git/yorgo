@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v95)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v97)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -101,8 +101,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 95;
-const APP_UPDATED_AT = "2026-11-01 00:56"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 97;
+const APP_UPDATED_AT = "2026-11-01 10:18"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -726,7 +726,8 @@ const adsExportMatrix=exported=>{
 };
 const adsParsePeriod=(matrix,dates,kind,checkedAt=new Date().toISOString())=>{
  const norm=v=>String(v??'').replace(/\s/g,''),wanted=new Set(dates),nonempty=r=>r.some(v=>v!=null&&v!=='');
- const integer=(v,label)=>{const n=typeof v==='number'?v:Number(String(v??'').replace(/[,\s원]/g,''));if(v==null||v===''||!Number.isSafeInteger(n)||n<0)throw Error(label+' 수치를 확인해주세요.');return n;};
+ const integer=(v,label,signed=false)=>{const n=typeof v==='number'?v:Number(String(v??'').replace(/[,\s원]/g,''));if(v==null||v===''||!Number.isSafeInteger(n)||(!signed&&n<0))throw Error(label+' 수치를 확인해주세요.');return n;};
+ const money=(v,label)=>integer(v,label,true);
  const iso=raw=>{const s=String(raw??'').trim().replace(/\.0$/,'');if(/^\d{8}$/.test(s))return s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6);const p=s.match(/^(\d{4})\D+(\d{1,2})\D+(\d{1,2})\D*$/);return p?[p[1],p[2].padStart(2,'0'),p[3].padStart(2,'0')].join('-'):s;};
  if(!dates.length||new Set(dates).size!==dates.length)throw Error('저장 기간이 잘못됐습니다.');
  if(kind==='conversion'){
@@ -737,20 +738,21 @@ const adsParsePeriod=(matrix,dates,kind,checkedAt=new Date().toISOString())=>{
   return Object.fromEntries(dates.map(date=>[date,{...(parsed[date]||{rows:[],basis:'14-day-attribution',source:'Coupang Ads > 맞춤 보고서 > 맞춤 보고서 > 일별'}),date,complete:true,checkedAt,collection:'period-excel'}]));
  }
  const head=matrix[0]?.map(norm)||[],col=name=>{const i=head.indexOf(norm(name));if(i<0)throw Error('정산 보고서 열 누락: '+name);return i;};
- const c={date:col('날짜'),domain:col('배송유형'),tax:col('부가세 유형'),id:col('캠페인 ID'),name:col('캠페인명'),net:col('청구 가능 광고비'),vat:col('부가가치세'),total:col('청구금액(+부가가치세)')};
+ const c={date:col('날짜'),domain:col('배송유형'),tax:col('부가세 유형'),id:col('캠페인 ID'),name:col('캠페인명'),net:col('청구 가능 광고비'),vat:col('부가가치세'),total:col('청구금액(+부가가치세)'),type:head.indexOf(norm('청구가능 금액 유형'))};
  const supplier=kind==='supplier',domain=supplier?'RETAIL':'SELLER',days=Object.fromEntries(dates.map(date=>[date,{date,supplier,complete:true,total:0,net:0,vat:0,rows:[],campaignVatBasis:'allocated-within-source-tax-group',source:'일별 광고비 정산내역 보고서 > 청구금액(+부가가치세)',collection:'period-excel',checkedAt}]));
  let overall=null,group=null;const groups=[];
  for(const r of matrix.slice(1).filter(nonempty)){
   if(norm(r[c.date])==='전체'){
-   if(overall||norm(r[c.domain])!==domain)throw Error('정산 전체 행·판매방식 오류');overall={net:integer(r[c.net],'전체 청구 가능 광고비'),vat:integer(r[c.vat],'전체 부가세'),total:integer(r[c.total],'전체 청구액')};continue;
+   if(overall||norm(r[c.domain])!==domain)throw Error('정산 전체 행·판매방식 오류');overall={net:money(r[c.net],'전체 청구 가능 광고비'),vat:money(r[c.vat],'전체 부가세'),total:money(r[c.total],'전체 청구액')};continue;
   }
   if(r[c.date]!=null&&r[c.date]!==''){
    const date=iso(r[c.date]);if(!wanted.has(date)||norm(r[c.domain])!==domain)throw Error('선택 기간·판매방식과 다른 정산 행: '+date);
-   group={date,tax:String(r[c.tax]||''),net:integer(r[c.net],'과세 그룹 광고비'),vat:integer(r[c.vat],'과세 그룹 부가세'),total:integer(r[c.total],'과세 그룹 청구액'),rows:[]};if(group.net+group.vat!==group.total)throw Error('과세 그룹 부가세 합계 불일치');groups.push(group);
+   group={date,tax:String(r[c.tax]||''),net:money(r[c.net],'과세 그룹 광고비'),vat:money(r[c.vat],'과세 그룹 부가세'),total:money(r[c.total],'과세 그룹 청구액'),rows:[]};if(group.net+group.vat!==group.total)throw Error('과세 그룹 부가세 합계 불일치');groups.push(group);
    const day=days[date];for(const k of ['net','vat','total'])day[k]+=group[k];
   }else{
    const name=String(r[c.name]||'').trim();if(!group||!name)throw Error('정산 캠페인 그룹·이름 누락');
-   const row={name,supplier,campaignId:String(r[c.id]??''),net:integer(r[c.net],'캠페인 광고비'),spend:r[c.total]==null||r[c.total]===''?null:integer(r[c.total],'캠페인 청구액')};group.rows.push(row);days[group.date].rows.push(row);
+   const billingType=c.type>=0?String(r[c.type]??'').trim():'',isAdjustment=norm(billingType).toLowerCase()==='adjustment';
+   const row={name:isAdjustment?'광고비 조정':name,supplier,campaignId:String(r[c.id]??''),...(isAdjustment?{isAdjustment:true,billingType,sourceName:name}:{}),net:money(r[c.net],'캠페인 광고비'),spend:r[c.total]==null||r[c.total]===''?null:money(r[c.total],'캠페인 청구액')};group.rows.push(row);days[group.date].rows.push(row);
   }
  }
  if(!overall||overall.net+overall.vat!==overall.total)throw Error('정산 전체 청구액 검증 실패');
@@ -758,11 +760,21 @@ const adsParsePeriod=(matrix,dates,kind,checkedAt=new Date().toISOString())=>{
  for(const g of groups){
   if(g.rows.reduce((s,r)=>s+r.net,0)!==g.net)throw Error('캠페인별 청구 가능 광고비 합계 불일치');
   const pending=g.rows.filter(r=>r.spend===null),remaining=g.vat-g.rows.filter(r=>r.spend!==null).reduce((s,r)=>s+r.spend-r.net,0),weight=pending.reduce((s,r)=>s+r.net,0);
-  if(remaining<0||(!weight&&remaining))throw Error('부가세 배분 기준 오류');
-  let assigned=0;const portions=pending.map((r,i)=>{const n=BigInt(r.net)*BigInt(remaining),d=BigInt(weight||1),v=Number(n/d);assigned+=v;return {r,i,v,remainder:n%d};});
-  portions.sort((a,b)=>a.remainder===b.remainder?a.i-b.i:a.remainder>b.remainder?-1:1);for(let n=0;n<remaining-assigned;n++)portions[n].v++;
+  if(!Number.isSafeInteger(remaining)||!Number.isSafeInteger(weight)||(!weight&&remaining))throw Error('부가세 배분 기준 오류');
+  // Settlement credits are signed money. Use mathematical floor (BigInt
+  // division truncates toward zero) so signed shares keep exact totals.
+  const denominator=BigInt(Math.abs(weight)||1),direction=weight<0?-1n:1n;
+  let assigned=0;const portions=pending.map((r,i)=>{
+   const numerator=BigInt(r.net)*BigInt(remaining)*direction;
+   let quotient=numerator/denominator,remainder=numerator%denominator;
+   if(remainder<0n){quotient-=1n;remainder+=denominator;}
+   const v=Number(quotient);assigned+=v;return {r,i,v,remainder};
+  });
+  const extra=remaining-assigned;
+  if(!Number.isSafeInteger(extra)||extra<0||extra>portions.length)throw Error('부가세 배분 잔액 오류');
+  portions.sort((a,b)=>a.remainder===b.remainder?a.i-b.i:a.remainder>b.remainder?-1:1);for(let n=0;n<extra;n++)portions[n].v++;
   for(const p of portions)Object.assign(p.r,{spend:p.r.net+p.v,vat:p.v,spendBasis:'allocated-vat',taxCode:g.tax});
-  if(g.rows.some(r=>r.spend<r.net)||g.rows.reduce((s,r)=>s+r.spend,0)!==g.total)throw Error('부가세 포함 캠페인 합계 불일치');
+  if(g.rows.some(r=>!Number.isSafeInteger(r.spend))||g.rows.reduce((s,r)=>s+r.spend,0)!==g.total)throw Error('부가세 포함 캠페인 합계 불일치');
  }
  return days;
 };
@@ -837,7 +849,7 @@ const adsJoinMetrics=(date,costRows,conversionRows,complete)=>{
  // Reserve unambiguous exact matches first; a renamed campaign must never
  // take a conversion row already assigned to another campaign.
  for(const basis of ['exact','format']){
-  const candidate=(i,j)=>result[i].supplier===conversionRows[j].supplier&&(basis==='exact'?adsNameKey(result[i].name)===adsNameKey(conversionRows[j].name):normalized(result[i].name)===normalized(conversionRows[j].name));
+  const candidate=(i,j)=>!result[i].isAdjustment&&result[i].supplier===conversionRows[j].supplier&&(basis==='exact'?adsNameKey(result[i].name)===adsNameKey(conversionRows[j].name):normalized(result[i].name)===normalized(conversionRows[j].name));
   for(let i=0;i<result.length;i++){
    if(linked.has(i))continue;
    const js=conversionRows.map((_,j)=>j).filter(j=>!used.has(j)&&candidate(i,j));
@@ -847,7 +859,7 @@ const adsJoinMetrics=(date,costRows,conversionRows,complete)=>{
   }
  }
  const similar=(i,j)=>{
-  if(result[i].supplier!==conversionRows[j].supplier)return false;
+  if(result[i].isAdjustment||result[i].supplier!==conversionRows[j].supplier)return false;
   const a=tokens(result[i].name),b=tokens(conversionRows[j].name);
   if(!a.length||!b.length||Math.min(a.join('').length,b.join('').length)<3)return false;
   return a.every(token=>b.includes(token))||b.every(token=>a.includes(token));
@@ -973,8 +985,8 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  {failedFile&&failedFile.startDate===range[0]&&failedFile.endDate===range[1]&&<div role="note" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 space-y-2"><p>읽기에 실패한 {failedFile.kind==='supplier'?'로켓':failedFile.kind==='wing'?'윙':'전환'} 원본 · {failedFile.startDate} ~ {failedFile.endDate}. 이 파일을 보존했습니다.</p><a href={failedFile.url} download={failedFile.filename} className="inline-block rounded-lg border border-blue-300 bg-white px-3 py-2 font-bold">오류 원본 엑셀 내려받기</a><details><summary className="cursor-pointer">수집 파일의 열 이름 확인</summary><p className="mt-2 break-words">{failedFile.headers.length?failedFile.headers.join(' · '):'엑셀 파일을 읽지 못해 열 이름을 확인할 수 없습니다.'}</p></details></div>}
  {conversionsMissing&&<div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">선택 기간 중 전환 자료가 없는 날짜: {missingConversionDates.slice(0,7).join(', ')}{missingConversionDates.length>7?' 외 '+(missingConversionDates.length-7)+'일':''}. 이미 저장된 날짜의 자료는 보존됩니다. 전체 기간이 모여야 기간 합계를 표시합니다.</div>}
  </div><div className="grid grid-cols-2 xl:grid-cols-5 gap-4">{[['청구 광고비 (부가세 포함)',billingTotal==null?'청구액 미수집':show(billingTotal)+'원'],[conversionLabel+' 전환 판매수량',totals.partial?'전환 자료 미수집':show(totals.units)],[conversionLabel+' 전환 매출',totals.partial?'전환 자료 미수집':show(totals.sales)+'원'],['ROAS (청구액 기준)',roas({...totals,spend:billingTotal,sales:totals.partial?null:totals.sales})],['구매 전환율',cvr({...totals,orders:totals.partial?null:totals.orders})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{value}</strong></div>)}</div>
- <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
- <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 광고비 합계는 일별 정산 보고서의 청구금액(+부가가치세) 원본입니다. ROAS는 이 청구액 기준으로 계산합니다. 캠페인별 금액은 원본의 청구 가능 광고비에 같은 과세 그룹의 실제 부가세를 비례 배분한 금액입니다. 원 단위 차이는 배분하여 합계를 원본과 맞춥니다. 캠페인별 배분액은 별도로 청구된 확정액이 아닙니다. 전환 매출은 맞춤보고서 주문금액 원본이며 부가세 포함 여부는 아직 확인되지 않았습니다. 임의로 10%를 더하지 않습니다.</p></section>;
+ <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.isAdjustment?'쿠팡 정산 조정액 (Adjustment) · 원본명: '+r.sourceName:r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
+ <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 광고비 합계는 일별 정산 보고서의 청구금액(+부가가치세) 원본입니다. ROAS는 이 청구액 기준으로 계산합니다. 캠페인별 금액은 원본의 청구 가능 광고비에 같은 과세 그룹의 실제 부가세를 비례 배분한 금액입니다. 원 단위 차이는 배분하여 합계를 원본과 맞춥니다. Adjustment 조정액은 원본의 부호대로 반영하며 표에 ‘광고비 조정’으로 별도 표시합니다. 캠페인별 배분액은 별도로 청구된 확정액이 아닙니다. 전환 매출은 맞춤보고서 주문금액 원본이며 부가세 포함 여부는 아직 확인되지 않았습니다. 임의로 10%를 더하지 않습니다.</p></section>;
 }
 
 function App() {
@@ -2206,6 +2218,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
