@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v100)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v101)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -101,8 +101,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 100;
-const APP_UPDATED_AT = "2026-11-01 15:55"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 101;
+const APP_UPDATED_AT = "2026-11-02 08:38"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -249,12 +249,17 @@ const getBookToyCat = name => {
     return null;
 };
 
-// 매주 첫 영업일(직전 날짜와 1일 초과 차이나는 날짜=주말/휴일 이후 첫 날) 색상 구분용
+// A week runs Monday through Sunday. Highlight its first collected Mon/Tue/Wed.
 const isWeekStartDate = (dates, i) => {
-    if(i<=0) return false;
-    const diffDays = Math.round((new Date(String(dates[i]).slice(0,10)+"T00:00:00Z") - new Date(String(dates[i-1]).slice(0,10)+"T00:00:00Z")) / 86400000);
-    return diffDays > 1;
+    const key=value=>String(value||'').slice(0,10);
+    const parsed=value=>{const day=key(value);if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return null;const date=new Date(day+'T00:00:00Z');return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===day?date:null;};
+    const date=parsed(dates?.[i]);if(!date)return false;
+    const weekday=date.getUTCDay();if(weekday<1||weekday>3)return false;
+    const monday=date.getTime()-(weekday-1)*86400000;
+    const candidates=(dates||[]).filter(value=>{const d=parsed(value);return d&&d.getTime()>=monday&&d.getTime()<monday+3*86400000;}).map(key).sort();
+    return key(dates[i])===candidates[0];
 };
+
 
 // 재고 이력은 삭제하지 않고 압축 저장한다.
 // Chrome extension inventory bridge. IDs are vendorItemIds, never credentials.
@@ -1441,6 +1446,7 @@ function App() {
 
 
     const stockBusyRef = useRef(false);
+    const stockAdsPendingRef = useRef(false);
     const loginWaitRef = useRef(0);
     const bridgeRequest = (type, queries=[], timeout=8000) => new Promise((resolve,reject)=>{
         const requestId='stock-'+Date.now()+'-'+Math.random().toString(36).slice(2);
@@ -1546,7 +1552,7 @@ function App() {
         }
         const sessionKey='period_'+Date.now()+'_'+Math.random().toString(36).slice(2);
         const ping=await bridgeRequest('YORGO_STOCK_PING');if(!current())return;
-        if(!ping.ok||!ping.adsPeriodExport||(Number(ping.bridgeRevision)||0)<100)throw Error('V100 background.js 교체 후 확장 프로그램과 웹페이지를 새로고침해주세요.');
+        if(!ping.ok||!ping.adsPeriodExport||(Number(ping.bridgeRevision)||0)<101)throw Error('V101 background.js 교체 후 확장 프로그램과 웹페이지를 새로고침해주세요.');
         setAdsJob({requestStart:dates[0],requestEnd:dates.at(-1),phase:'collecting',done:completed,total:dates.length,savedTasks,totalTasks,label:(refresh?'최신 자료 갱신':'보관 자료 확인 · 누락 보고서 수집')+' · 보고서 '+totalReports+'개',date:null});
         let reportIndex=0;
         for(const {chunk,kind} of plan.tasks){
@@ -1597,7 +1603,7 @@ function App() {
     };
     const handleStockFetch = async (automatic=false) => {
         automatic=automatic===true;
-        if(stockBusyRef.current||excelBusyRef.current||adsBusyRef.current)return;stockBusyRef.current=true;
+        if(stockBusyRef.current||excelBusyRef.current||adsBusyRef.current)return;stockBusyRef.current=true;if(!automatic)stockAdsPendingRef.current=true;
         try{
             if(!useFirebase)throw new Error('클라우드 연결이 없어 저장하지 않았습니다.');const check=inventoryQueries();
             if(!check.latest||!check.tracked.length||check.problems.length)throw new Error(check.problems.join(', ')||'조회할 숫자 재고 상품이 없습니다.');
@@ -1609,7 +1615,7 @@ function App() {
             if(!response.ok){const states=[...new Set((response.results||[]).filter(r=>!r.complete||r.status!=='OK').map(r=>r.status))];throw new Error('쿠팡 조회 실패 ('+(states.join(', ')||response.status)+'). 쿠팡 로그인/새로고침 후 재시도하세요. 재고는 저장하지 않았습니다.');}
             loginWaitRef.current=0;const runDate=await applyInventoryResults(check.queries,response);setStockRun({phase:'done',message:check.queries.length+'개 상품을 '+runDate+' 열로 추가했습니다. 기존 기록은 유지했습니다.',details:[]});
         }catch(e){setStockRun({phase:'error',message:'저장하지 않았습니다.',details:[String(e.message||e)]});}finally{stockBusyRef.current=false;}
-        if(!automatic)await syncAds();
+        if(stockAdsPendingRef.current){stockAdsPendingRef.current=false;await syncAds(adsRange('yesterday'));}
     };
 
     useEffect(()=>{if(stockRun.phase!=='login')return;const timer=setInterval(()=>{if(Date.now()-loginWaitRef.current>180000){setStockRun({phase:'error',message:'로그인 대기 시간이 지났습니다. 로그인 후 현재고 불러오기를 다시 눌러주세요.',details:[]});return;}handleStockFetch(true);},10000);return()=>clearInterval(timer);},[stockRun.phase]);
@@ -2279,6 +2285,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
