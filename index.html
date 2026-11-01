@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v98)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v99)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -101,8 +101,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 98;
-const APP_UPDATED_AT = "2026-11-01 10:27"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 99;
+const APP_UPDATED_AT = "2026-11-01 15:12"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -919,16 +919,44 @@ const adsSortRows=(rows,sort)=>{
  return [...rows].sort((a,b)=>{const x=metric(a),y=metric(b),missing=v=>v==null||(typeof v==='number'&&!Number.isFinite(v));if(missing(x)||missing(y))return missing(x)===missing(y)?0:missing(x)?1:-1;const delta=typeof x==='number'&&typeof y==='number'?x-y:String(x).localeCompare(String(y),'ko',{numeric:true});return (sort.direction==='asc'?delta:-delta)||String(a.name).localeCompare(String(b.name),'ko')||String(a.date||'').localeCompare(String(b.date||''));});
 };
 
+const appKstTimestamp=value=>{
+ const date=new Date(value);if(!Number.isFinite(date.getTime()))return null;
+ return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(date);
+};
+const appUploadRecord=payload=>{
+ const row=Array.isArray(payload)&&payload.length===1?payload[0]:null;
+ const value=row?.commit?.committer?.date;
+ if(!row||!/^[a-f0-9]{40}$/.test(row.sha||'')||typeof value!=='string'||!Number.isFinite(Date.parse(value)))throw Error('업로드 기록을 확인하지 못했습니다.');
+ return {at:value,sha:row.sha};
+};
+function AppFileInfo(){
+ const [upload,setUpload]=useState({state:'loading'});
+ useEffect(()=>{
+  if(window.location.hostname!=='arxotn-git.github.io'||!window.location.pathname.startsWith('/yorgo/')){setUpload({state:'local'});return;}
+  let active=true;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
+  (async()=>{
+   try{
+    const response=await fetch('https://api.github.com/repos/arxotn-git/yorgo/commits?path=index.html&sha=main&per_page=1',{cache:'no-store',credentials:'omit',signal:controller.signal});
+    if(!response.ok)throw Error('업로드 기록 응답 오류');
+    const record=appUploadRecord(await response.json());if(active)setUpload({state:'ready',...record});
+   }catch{if(active)setUpload({state:'unavailable'});}
+   finally{clearTimeout(timer);}
+  })();
+  return()=>{active=false;clearTimeout(timer);controller.abort();};
+ },[]);
+ const label=upload.state==='ready'?appKstTimestamp(upload.at):upload.state==='loading'?'확인 중':upload.state==='local'?'사이트에서 확인':'확인 불가';
+ return <p className="mt-1 text-xs font-normal text-slate-400" title={'GitHub의 index.html 최종 업로드 시각 · 한국 시간. 코드 수정: '+APP_UPDATED_AT}>파일 업로드: {label}</p>;
+}
+
 function AdsProgress({job,busy}){
- if(!job)return null;
- const done=job.phase==='complete',error=['error','partial'].includes(job.phase),total=job.total||0,value=job.totalTasks?Math.min(100,Math.round((job.savedTasks||0)/job.totalTasks*100)):total?Math.min(100,Math.round(job.done/total*100)):0;
- const color=error?'bg-red-500':done?'bg-emerald-500':'bg-blue-500';
- return <div className={`rounded-xl border p-3 ${error?'border-red-200 bg-red-50':done?'border-emerald-200 bg-emerald-50':'border-blue-200 bg-blue-50'}`}>
-  <div role="progressbar" aria-label="광고 자료 수집 진행" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-valuetext={`${job.label||'준비 중'}${total?` · ${job.done}/${total}일 완료`:''}`} className="relative h-4 rounded-full bg-slate-200 overflow-hidden">
-   <div className={`h-full transition-all duration-300 ${color}`} style={{width:`${done?100:value}%`,backgroundImage:'repeating-linear-gradient(115deg,transparent,transparent 10px,rgba(255,255,255,.3) 10px,rgba(255,255,255,.3) 20px)'}}/>
-   {busy&&!done&&!error&&<div aria-hidden="true" className="ads-loading-sweep absolute inset-y-0 w-1/3 rounded-full bg-blue-400/60"/>}
+ if(!busy||!job||!['collecting','saving'].includes(job.phase))return null;
+ const total=job.total||0,value=job.totalTasks?Math.min(100,Math.round((job.savedTasks||0)/job.totalTasks*100)):total?Math.min(100,Math.round((job.done||0)/total*100)):0;
+ return <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+  <div role="progressbar" aria-label="광고 자료 수집 진행" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-valuetext={job.label||'수집 중'} className="relative h-3 rounded-full bg-slate-200 overflow-hidden">
+   <div className="h-full bg-blue-500 transition-all duration-300" style={{width:`${value}%`}}/>
+   <div aria-hidden="true" className="ads-loading-sweep absolute inset-y-0 w-1/3 rounded-full bg-blue-400/60"/>
   </div>
-  <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-slate-600"><span>{job.date?job.date+' · ':''}{job.label||'준비 중'}{job.rowsTotal>0?` · 상세 행 ${job.rowsDone||0}/${job.rowsTotal}`:''}{job.totalTasks?` · 자료 ${job.savedTasks||0}/${job.totalTasks}건 보관`:''}</span><span>{job.cacheOnly?`보관 자료 조회 · ${job.done}/${total}일`:error?`${job.phase==='partial'?'부분 완료':'실패'} · ${job.done||0}/${total}일 보관`:done?`완료 · ${job.done}/${total}일 보관`:total?`${job.done}/${total}일 보관`:'진행 중'}</span></div>
+  <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-slate-600"><span>{job.date?job.date+' · ':''}{job.label||'수집 중'}</span><span>{job.totalTasks?`이번 실행 ${job.savedTasks||0}/${job.totalTasks}건 처리`:''}</span></div>
  </div>;
 }
 
@@ -981,11 +1009,13 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const conversionAvailable=dates.filter(d=>conversionDays[d]?.complete===true&&Array.isArray(conversionDays[d]?.rows));
  const conversionsMissing=conversionAvailable.length!==dates.length;
  const showJob=!job?.requestStart||(job.requestStart===range[0]&&job.requestEnd===range[1]);
+ const jobNeedsLogin=showJob&&!busy&&job?.phase==='login';
+ const jobFailed=showJob&&!busy&&['error','partial','login'].includes(job?.phase);
  const missingConversionDates=dates.filter(date=>!conversionAvailable.includes(date));
  const campaignCatalog=useMemo(()=>adsCampaignCatalog(billingDays),[billingDays]);
- const rows=dates.flatMap(date=>adsMergeDay(date,{rows:adsBillingRows(billingDays[date],campaignCatalog)},conversionDays[date],conversionMode,campaignCatalog)).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
- const grouped=adsMergePeriod(dates,billingDays,conversionDays,conversionMode,campaignCatalog).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
- const totals=adsConversionSummary(dates,conversionDays,conversionMode,r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
+ const rows=useMemo(()=>mode==='daily'?dates.flatMap(date=>adsMergeDay(date,{rows:adsBillingRows(billingDays[date],campaignCatalog)},conversionDays[date],conversionMode,campaignCatalog)).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase())):[],[mode,dates,billingDays,conversionDays,conversionMode,campaignCatalog,source,query]);
+ const grouped=useMemo(()=>mode==='campaign'?adsMergePeriod(dates,billingDays,conversionDays,conversionMode,campaignCatalog).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase())):[],[mode,dates,billingDays,conversionDays,conversionMode,campaignCatalog,source,query]);
+ const totals=useMemo(()=>adsConversionSummary(dates,conversionDays,conversionMode,r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase())),[dates,conversionDays,conversionMode,source,query]);
  const displayRows=adsSortRows(mode==='daily'?rows:grouped,sort);
  const columns=[...(mode==='daily'?[['date','날짜']]:[]),['name','캠페인'],['supplier','구분'],['spend','청구액·VAT 배분 (원)'],['units',conversionLabel+' 판매수량'],['sales',conversionLabel+' 매출·원본 (원)'],['roas','ROAS·청구액 기준'],['cvr','구매 전환율']];
  const toggleSort=key=>setSort(previous=>({key,direction:previous.key===key?(previous.direction==='asc'?'desc':'asc'):['name','supplier','date'].includes(key)?'asc':'desc'}));
@@ -1001,12 +1031,12 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['supplier','로켓배송'],['wing','윙'],['all','전체']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
 </div>
  {!busy&&dates.length>0&&<p className="text-sm font-semibold text-emerald-700" role="note">저장된 자료에서 표시합니다. 날짜 변경 시 쿠팡에 접속하지 않습니다. 누락된 자료만 수집 버튼으로 가져올 수 있습니다.</p>}
- <p className="text-sm text-slate-600">{range.join(' ~ ')} · 로켓 청구액 {dates.filter(d=>billingDays[d]?.supplier?.complete).length}/{dates.length}일 · 윙 청구액 {dates.filter(d=>billingDays[d]?.wing?.complete).length}/{dates.length}일 · 로켓·윙 전환 {conversionAvailable.length}/{dates.length}일</p><p className="text-sm text-blue-700 whitespace-pre-wrap" role="status">{showJob?status:'선택 기간의 보관 자료를 표시합니다.'}</p>
+ <p className="text-sm text-slate-600">{range.join(' ~ ')} · 로켓 청구액 {dates.filter(d=>billingDays[d]?.supplier?.complete).length}/{dates.length}일 · 윙 청구액 {dates.filter(d=>billingDays[d]?.wing?.complete).length}/{dates.length}일 · 로켓·윙 전환 {conversionAvailable.length}/{dates.length}일</p><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><p className={`text-sm whitespace-pre-wrap ${jobFailed?'text-amber-800':busy?'text-blue-700':'text-emerald-700'}`} role="status">{showJob?status:'선택 기간의 보관 자료를 표시합니다.'}</p>{jobNeedsLogin&&<a className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1 text-sm font-bold text-amber-900" href="https://advertising.coupang.com/marketing/campaign/registration?goalType%3DSALES&_cap_client=SUPPLIERHUB" target="_blank" rel="noopener noreferrer">쿠팡 광고센터 로그인</a>}</div>
  {showJob&&<AdsProgress job={job} busy={busy}/>}
  {failedFile&&failedFile.startDate===range[0]&&failedFile.endDate===range[1]&&<div role="note" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 space-y-2"><p>읽기에 실패한 {failedFile.kind==='supplier'?'로켓':failedFile.kind==='wing'?'윙':'전환'} 원본 · {failedFile.startDate} ~ {failedFile.endDate}. 이 파일을 보존했습니다.</p><a href={failedFile.url} download={failedFile.filename} className="inline-block rounded-lg border border-blue-300 bg-white px-3 py-2 font-bold">오류 원본 엑셀 내려받기</a><details><summary className="cursor-pointer">수집 파일의 열 이름 확인</summary><p className="mt-2 break-words">{failedFile.headers.length?failedFile.headers.join(' · '):'엑셀 파일을 읽지 못해 열 이름을 확인할 수 없습니다.'}</p></details></div>}
  {conversionsMissing&&<div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">선택 기간 중 전환 자료가 없는 날짜: {missingConversionDates.slice(0,7).join(', ')}{missingConversionDates.length>7?' 외 '+(missingConversionDates.length-7)+'일':''}. 이미 저장된 날짜의 자료는 보존됩니다. 전체 기간이 모여야 기간 합계를 표시합니다.</div>}
  </div><div className="grid grid-cols-2 xl:grid-cols-5 gap-4">{[['청구 광고비 (부가세 포함)',billingTotal==null?'청구액 미수집':show(billingTotal)+'원'],[conversionLabel+' 전환 판매수량',totals.partial?'전환 자료 미수집':show(totals.units)],[conversionLabel+' 전환 매출',totals.partial?'전환 자료 미수집':show(totals.sales)+'원'],['ROAS (청구액 기준)',roas({...totals,spend:billingTotal,sales:totals.partial?null:totals.sales})],['구매 전환율',cvr({...totals,orders:totals.partial?null:totals.orders})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{value}</strong></div>)}</div>
- <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.isAdjustment?'쿠팡 정산 조정액 (Adjustment) · 원본명: '+r.sourceName:r.campaignId&&r.aliases?.length>1?'캠페인 ID: '+r.campaignId+' · 정산 이름 이력: '+r.aliases.join(' / '):r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
+ <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.isAdjustment?'쿠팡 정산 조정액 (Adjustment) · 원본명: '+r.sourceName:r.campaignId&&r.aliases?.length>1?'캠페인 ID: '+r.campaignId+' · 정산 이름 이력: '+r.aliases.join(' / '):r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!displayRows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
  <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 광고비 합계는 일별 정산 보고서의 청구금액(+부가가치세) 원본입니다. ROAS는 이 청구액 기준으로 계산합니다. 캠페인별 금액은 원본의 청구 가능 광고비에 같은 과세 그룹의 실제 부가세를 비례 배분한 금액입니다. 원 단위 차이는 배분하여 합계를 원본과 맞춥니다. Adjustment 조정액은 원본의 부호대로 반영하며 표에 ‘광고비 조정’으로 별도 표시합니다. 캠페인별 배분액은 별도로 청구된 확정액이 아닙니다. 전환 매출은 맞춤보고서 주문금액 원본이며 부가세 포함 여부는 아직 확인되지 않았습니다. 임의로 10%를 더하지 않습니다.</p></section>;
 }
 
@@ -1546,8 +1576,10 @@ function App() {
         setAdsJob({requestStart:dates[0],requestEnd:dates.at(-1),phase:'complete',done:completed,total:dates.length,savedTasks,totalTasks,label:'기간 자료 보관 완료 · 수집 탭 닫힘',date:null});
       }catch(error){
         if(!current())return;
-        setAdsStatus((savedTasks?'부분 완료':'조회 실패')+' · '+completed+'/'+dates.length+'일 자료 보관\n'+requestLabel+': '+String(error.message||error)+'\n기존 자료는 보존했습니다.');
-        setAdsJob(previous=>({...previous,requestStart:dates[0],requestEnd:dates.at(-1),phase:savedTasks?'partial':'error',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,label:requestLabel+' · '+String(error.message||error)}));
+        const reason=String(error.message||error),needsLogin=/로그인|LOGIN_REQUIRED|SESSION_EXPIRED/.test(reason);
+        const action=refresh?'쿠팡 다시 받기':workerStarted?'누락 자료 수집':'자료 조회';
+        setAdsStatus(needsLogin?'쿠팡 광고센터 로그인이 필요합니다. 저장된 자료는 그대로 표시합니다.':action+'를 완료하지 못했습니다. '+reason+' · 기존 자료는 보존했습니다.');
+        setAdsJob(previous=>({...previous,requestStart:dates[0],requestEnd:dates.at(-1),phase:needsLogin?'login':savedTasks?'partial':'error',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,label:requestLabel+' · '+reason,refresh}));
       }finally{
         if(current()){
           if(workerStarted)try{await bridgeRequest('YORGO_ADS_CANCEL',[],10000);}catch{}
@@ -1834,7 +1866,7 @@ const handleLogin = async ev => {
         <div className="min-h-screen flex flex-col">
             <header className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white shadow-lg py-5 px-6 md:px-10 relative z-50">
                 <div className="flex flex-wrap items-center gap-3">
-                    <div><h1 onClick={()=>window.location.reload()} title="클릭하면 새로고침" className="text-2xl font-bold cursor-pointer select-none">로켓배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1><p className="mt-1 text-xs font-normal text-slate-400">버전 업데이트: {APP_UPDATED_AT}</p></div>
+                    <div><h1 onClick={()=>window.location.reload()} title="클릭하면 새로고침" className="text-2xl font-bold cursor-pointer select-none">로켓배송 재고 현황 <span className="text-indigo-400 font-extrabold">(v{APP_VERSION})</span></h1><AppFileInfo/></div>
                     <div className="flex items-center gap-2">
                         <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${dbSync.includes("연동") ? "bg-emerald-600/50 text-emerald-100" : "bg-amber-600/50 text-amber-100 animate-pulse"}`}>
                             {dbSync}
@@ -2239,6 +2271,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
