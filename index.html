@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v97)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v98)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -101,8 +101,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 97;
-const APP_UPDATED_AT = "2026-11-01 10:18"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 98;
+const APP_UPDATED_AT = "2026-11-01 10:27"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -809,22 +809,47 @@ const adsFailedWorkbook=(exported,matrix)=>{
  return {url:URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),filename,kind:exported.kind,startDate:exported.startDate,endDate:exported.endDate,headers:(matrix?.[0]||[]).map(v=>String(v??'')).filter(Boolean)};
 };
 
+const adsNameKey=name=>String(name||'').trim().replace(/\s+/g,' ');
+const adsCampaignId=row=>{const id=String(row.campaignId??'').trim().replace(/\.0$/,'');return /^\d+$/.test(id)&&id!=='0'?id:'';};
+const adsAliases=row=>[...new Set([row.name,...(row.aliases||[])].map(adsNameKey).filter(Boolean))];
+const adsEntityKey=row=>JSON.stringify([!!row.supplier,row.isAdjustment?'adjustment':adsCampaignId(row)?'id':'name',row.isAdjustment?'Adjustment':adsCampaignId(row)||adsNameKey(row.name)]);
+// Dates outside the query contribute names only, never financial amounts.
+const adsCampaignCatalog=billingDays=>{
+ const catalog=new Map();
+ for(const [date,day] of Object.entries(billingDays).sort(([a],[b])=>a.localeCompare(b))){
+  for(const entry of Object.values(day||{}))for(const row of entry?.rows||[]){
+   if(row.isAdjustment||!adsCampaignId(row))continue;
+   const key=adsEntityKey(row),old=catalog.get(key),aliases=[...new Set([...(old?.aliases||[]),...adsAliases(row)])];
+   catalog.set(key,{name:row.name,aliases,campaignId:adsCampaignId(row),supplier:row.supplier,date});
+  }
+ }
+ return catalog;
+};
 const adsAggregate=rows=>{
- const map=new Map();rows.forEach(r=>{const key=JSON.stringify([r.name,r.supplier]);let x=map.get(key);if(!x){x={name:r.name,supplier:r.supplier,spend:0,sales:0,units:0,orders:0,clicks:0,partial:false,costPartial:false};map.set(key,x);}x.costPartial||=r.spend==null;x.spend+=r.spend||0;x.partial||=r.sales==null||r.units==null||r.orders==null;x.sales+=r.sales||0;x.units+=r.units||0;x.orders+=r.orders||0;x.clicks+=r.clicks||0;});
+ const map=new Map();for(const r of rows){
+  const key=adsEntityKey(r);let x=map.get(key);
+  if(!x){x={name:r.name,supplier:r.supplier,...(adsCampaignId(r)?{campaignId:adsCampaignId(r)}:{}),aliases:[],conversionNames:[],spend:0,sales:0,units:0,orders:0,clicks:0,partial:false,costPartial:false};map.set(key,x);}
+  x.aliases=[...new Set([...x.aliases,...adsAliases(r)])];x.conversionNames=[...new Set([...x.conversionNames,...(r.conversionNames||[r.name])])];
+  if(r.joinBasis)x.joinBasis=r.joinBasis;
+  x.costPartial||=r.spend==null;x.spend+=r.spend||0;x.partial||=r.sales==null||r.units==null||r.orders==null;
+  x.sales+=r.sales||0;x.units+=r.units||0;x.orders+=r.orders||0;x.clicks+=r.clicks||0;
+ }
  return [...map.values()].map(x=>({...x,spend:x.costPartial?null:x.spend,sales:x.partial?null:x.sales,units:x.partial?null:x.units,orders:x.partial?null:x.orders})).sort((a,b)=>(b.spend||0)-(a.spend||0));
 };
-const adsBillingRows=day=>{
- const map=new Map();for(const entry of Object.values(day||{}))for(const r of entry.rows||[]){const key=JSON.stringify([r.name.trim(),r.supplier]);const old=map.get(key);if(!old)map.set(key,{...r});else{old.net+=r.net;old.spend=old.spend==null||r.spend==null?null:old.spend+r.spend;}}return [...map.values()];
+const adsBillingRows=(day,catalog=new Map())=>{
+ const map=new Map();for(const entry of Object.values(day||{}))for(const r of entry?.rows||[]){
+  const key=adsEntityKey(r),known=catalog.get(key),old=map.get(key),aliases=[...new Set([...(old?.aliases||[]),...adsAliases(r),...(known?.aliases||[])])];
+  if(!old)map.set(key,{...r,name:known?.name||r.name,aliases});
+  else{old.net+=r.net;old.spend=old.spend==null||r.spend==null?null:old.spend+r.spend;old.name=known?.name||r.name;old.aliases=aliases;if(Number.isFinite(old.vat)&&Number.isFinite(r.vat))old.vat+=r.vat;}
+ }
+ return [...map.values()];
 };
-const adsNameKey=name=>String(name||'').trim().replace(/\s+/g,' ');
 const adsConversionMetrics=(row,mode)=>{
  const keys=['orders','units','sales'],valid=value=>value&&keys.every(k=>Number.isFinite(value[k])&&value[k]>=0);
  if(mode!=='total')return valid(row[mode])?row[mode]:null;
  const a=row.direct,b=row.indirect;
  return valid(a)&&valid(b)?Object.fromEntries(keys.map(k=>[k,a[k]+b[k]])):null;
 };
-// Conversion totals come from the complete conversion report. A settlement
-// campaign-name join must never decide whether that report was collected.
 const adsConversionSummary=(dates,conversionDays,conversionMode,matches=()=>true)=>{
  const totals={sales:0,units:0,orders:0,clicks:0,partial:dates.length===0};
  for(const date of dates){
@@ -834,63 +859,58 @@ const adsConversionSummary=(dates,conversionDays,conversionMode,matches=()=>true
    if(!matches(row))continue;
    const metrics=adsConversionMetrics(row,conversionMode);
    if(!metrics||!Number.isFinite(row.clicks)||row.clicks<0){totals.partial=true;continue;}
-   for(const key of ['sales','units','orders'])totals[key]+=metrics[key];
-   totals.clicks+=row.clicks;
+   for(const key of ['sales','units','orders'])totals[key]+=metrics[key];totals.clicks+=row.clicks;
   }
  }
  return totals;
 };
 const adsJoinMetrics=(date,costRows,conversionRows,complete)=>{
- const result=costRows.map(row=>({...row,date,sales:null,units:null,orders:null,clicks:null}));
- const used=new Set(),linked=new Set();
  const normalized=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
- const tokens=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/^(로켓배송|로켓|윙)[\s_\-]*/,'').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
- const connect=(i,j,basis)=>{const source=conversionRows[j],old=result[i];result[i]={...old,name:source.name,sales:source.sales,units:source.units,orders:source.orders,clicks:source.clicks,settlementName:old.name,conversionName:source.name,matchBasis:basis};used.add(j);linked.add(i);};
- // Reserve unambiguous exact matches first; a renamed campaign must never
- // take a conversion row already assigned to another campaign.
- for(const basis of ['exact','format']){
-  const candidate=(i,j)=>!result[i].isAdjustment&&result[i].supplier===conversionRows[j].supplier&&(basis==='exact'?adsNameKey(result[i].name)===adsNameKey(conversionRows[j].name):normalized(result[i].name)===normalized(conversionRows[j].name));
+ const sameChannel=(a,b)=>a.supplier===b.supplier;
+ const compatible=(a,b)=>sameChannel(a,b)&&!a.isAdjustment&&(!adsCampaignId(a)||!adsCampaignId(b)||adsCampaignId(a)===adsCampaignId(b));
+ const aliasMatch=(a,b,format=false)=>adsAliases(a).some(x=>adsAliases(b).some(y=>(format?normalized(x)===normalized(y):adsNameKey(x)===adsNameKey(y))));
+ // Multiple historical conversion labels can belong to one source ID.
+ // Resolve only an unambiguous ID or recorded alias before aggregating them.
+ const mapped=conversionRows.map(row=>{
+  let candidates=adsCampaignId(row)?costRows.filter(cost=>compatible(cost,row)&&adsCampaignId(cost)===adsCampaignId(row)):[];
+  if(!candidates.length)candidates=costRows.filter(cost=>compatible(cost,row)&&aliasMatch(cost,row));
+  if(!candidates.length)candidates=costRows.filter(cost=>compatible(cost,row)&&aliasMatch(cost,row,true));
+  const target=candidates.length===1&&adsCampaignId(candidates[0])?candidates[0]:null;
+  return target?{...row,name:target.name,campaignId:adsCampaignId(target),aliases:adsAliases(row),conversionNames:row.conversionNames||[row.name],joinBasis:adsCampaignId(row)?'campaign-id':'settlement-alias'}:{...row};
+ });
+ const sources=adsAggregate(mapped),result=costRows.map(row=>({...row,date,sales:null,units:null,orders:null,clicks:null}));
+ const used=new Set(),linked=new Set();
+ const connect=(i,j,basis)=>{const source=sources[j],old=result[i];result[i]={...old,name:source.name,sales:source.sales,units:source.units,orders:source.orders,clicks:source.clicks,settlementName:old.name,conversionName:source.name,conversionNames:source.conversionNames,matchBasis:source.joinBasis||basis};used.add(j);linked.add(i);};
+ for(const basis of ['campaign-id','exact','format']){
+  const candidate=(i,j)=>compatible(result[i],sources[j])&&(basis==='campaign-id'?!!adsCampaignId(result[i])&&adsCampaignId(result[i])===adsCampaignId(sources[j]):aliasMatch(result[i],sources[j],basis==='format'));
   for(let i=0;i<result.length;i++){
    if(linked.has(i))continue;
-   const js=conversionRows.map((_,j)=>j).filter(j=>!used.has(j)&&candidate(i,j));
-   if(js.length!==1)continue;
-   const owners=result.map((_,k)=>k).filter(k=>!linked.has(k)&&candidate(k,js[0]));
-   if(owners.length===1)connect(i,js[0],basis);
+   const js=sources.map((_,j)=>j).filter(j=>!used.has(j)&&candidate(i,j));if(js.length!==1)continue;
+   const owners=result.map((_,k)=>k).filter(k=>!linked.has(k)&&candidate(k,js[0]));if(owners.length===1)connect(i,js[0],basis);
   }
  }
+ const tokens=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/^(로켓배송|로켓|윙)\d*[\s_\-]*/,'').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
  const similar=(i,j)=>{
-  if(result[i].isAdjustment||result[i].supplier!==conversionRows[j].supplier)return false;
-  const a=tokens(result[i].name),b=tokens(conversionRows[j].name);
-  if(!a.length||!b.length||Math.min(a.join('').length,b.join('').length)<3)return false;
-  return a.every(token=>b.includes(token))||b.every(token=>a.includes(token));
+  if(!compatible(result[i],sources[j]))return false;
+  return adsAliases(result[i]).some(left=>adsAliases(sources[j]).some(right=>{const a=tokens(left),b=tokens(right);return a.length&&b.length&&Math.min(a.join('').length,b.join('').length)>=3&&(a.every(t=>b.includes(t))||b.every(t=>a.includes(t)));}));
  };
- // Product additions/removals can change the label. Use only a unique,
- // reciprocal remaining token match. Ambiguous rows remain separate.
  for(let i=0;i<result.length;i++){
   if(linked.has(i))continue;
-  const js=conversionRows.map((_,j)=>j).filter(j=>!used.has(j)&&similar(i,j));
-  if(js.length!==1)continue;
-  const owners=result.map((_,k)=>k).filter(k=>!linked.has(k)&&similar(k,js[0]));
-  if(owners.length===1)connect(i,js[0],'name-similarity');
+  const js=sources.map((_,j)=>j).filter(j=>!used.has(j)&&similar(i,j));if(js.length!==1)continue;
+  const owners=result.map((_,k)=>k).filter(k=>!linked.has(k)&&similar(k,js[0]));if(owners.length===1)connect(i,js[0],'name-similarity');
  }
- for(let j=0;j<conversionRows.length;j++)if(!used.has(j))result.push({...conversionRows[j],date,spend:null});
+ for(let j=0;j<sources.length;j++)if(!used.has(j))result.push({...sources[j],date,spend:null});
  if(complete)for(const row of result)if((row.spend===0||row.net===0)&&row.sales==null){row.sales=0;row.units=0;row.orders=0;row.clicks=0;}
  return result;
 };
-const adsMergeDay=(date,costDay,conversionDay,conversionMode)=>adsJoinMetrics(date,costDay?.rows||[],(conversionDay?.rows||[]).map(r=>{
- const metrics=adsConversionMetrics(r,conversionMode);
- return {...r,...(metrics||{sales:null,units:null,orders:null}),clicks:r.clicks};
+const adsMergeDay=(date,costDay,conversionDay,conversionMode,catalog=new Map())=>adsJoinMetrics(date,adsBillingRows([{rows:costDay?.rows||[]}],catalog),(conversionDay?.rows||[]).map(r=>{
+ const metrics=adsConversionMetrics(r,conversionMode);return {...r,...(metrics||{sales:null,units:null,orders:null}),clicks:r.clicks};
 }),conversionDay?.complete===true);
-const adsMergePeriod=(dates,billingDays,conversionDays,conversionMode)=>{
+const adsMergePeriod=(dates,billingDays,conversionDays,conversionMode,catalog=adsCampaignCatalog(billingDays))=>{
  const complete=dates.length>0&&dates.every(date=>conversionDays[date]?.complete===true&&Array.isArray(conversionDays[date]?.rows));
  const entries=dates.flatMap(date=>Object.values(billingDays[date]||{}).filter(entry=>entry?.complete===true));
- const costs=adsBillingRows(entries).map(row=>({...row,spend:dates.every(date=>billingDays[date]?.[row.supplier?'supplier':'wing']?.complete===true)?row.spend:null}));
- // Aggregate each source first. A missing daily name match must not erase
- // valid values from the remaining days of this same campaign.
- const conversions=adsAggregate(dates.flatMap(date=>(conversionDays[date]?.rows||[]).map(row=>({
-  name:row.name,supplier:row.supplier,spend:null,clicks:row.clicks,
-  ...((complete?adsConversionMetrics(row,conversionMode):null)||{sales:null,units:null,orders:null})
- }))));
+ const costs=adsBillingRows(entries,catalog).map(row=>({...row,spend:dates.every(date=>billingDays[date]?.[row.supplier?'supplier':'wing']?.complete===true)?row.spend:null}));
+ const conversions=dates.flatMap(date=>(conversionDays[date]?.rows||[]).map(row=>({...row,spend:null,...((complete?adsConversionMetrics(row,conversionMode):null)||{sales:null,units:null,orders:null})})));
  return adsJoinMetrics(null,costs,conversions,complete);
 };
 
@@ -962,8 +982,9 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const conversionsMissing=conversionAvailable.length!==dates.length;
  const showJob=!job?.requestStart||(job.requestStart===range[0]&&job.requestEnd===range[1]);
  const missingConversionDates=dates.filter(date=>!conversionAvailable.includes(date));
- const rows=dates.flatMap(date=>adsMergeDay(date,{rows:adsBillingRows(billingDays[date])},conversionDays[date],conversionMode)).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
- const grouped=adsMergePeriod(dates,billingDays,conversionDays,conversionMode).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
+ const campaignCatalog=useMemo(()=>adsCampaignCatalog(billingDays),[billingDays]);
+ const rows=dates.flatMap(date=>adsMergeDay(date,{rows:adsBillingRows(billingDays[date],campaignCatalog)},conversionDays[date],conversionMode,campaignCatalog)).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
+ const grouped=adsMergePeriod(dates,billingDays,conversionDays,conversionMode,campaignCatalog).filter(r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
  const totals=adsConversionSummary(dates,conversionDays,conversionMode,r=>matchesSource(r)&&r.name.toLowerCase().includes(query.toLowerCase()));
  const displayRows=adsSortRows(mode==='daily'?rows:grouped,sort);
  const columns=[...(mode==='daily'?[['date','날짜']]:[]),['name','캠페인'],['supplier','구분'],['spend','청구액·VAT 배분 (원)'],['units',conversionLabel+' 판매수량'],['sales',conversionLabel+' 매출·원본 (원)'],['roas','ROAS·청구액 기준'],['cvr','구매 전환율']];
@@ -985,7 +1006,7 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  {failedFile&&failedFile.startDate===range[0]&&failedFile.endDate===range[1]&&<div role="note" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 space-y-2"><p>읽기에 실패한 {failedFile.kind==='supplier'?'로켓':failedFile.kind==='wing'?'윙':'전환'} 원본 · {failedFile.startDate} ~ {failedFile.endDate}. 이 파일을 보존했습니다.</p><a href={failedFile.url} download={failedFile.filename} className="inline-block rounded-lg border border-blue-300 bg-white px-3 py-2 font-bold">오류 원본 엑셀 내려받기</a><details><summary className="cursor-pointer">수집 파일의 열 이름 확인</summary><p className="mt-2 break-words">{failedFile.headers.length?failedFile.headers.join(' · '):'엑셀 파일을 읽지 못해 열 이름을 확인할 수 없습니다.'}</p></details></div>}
  {conversionsMissing&&<div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">선택 기간 중 전환 자료가 없는 날짜: {missingConversionDates.slice(0,7).join(', ')}{missingConversionDates.length>7?' 외 '+(missingConversionDates.length-7)+'일':''}. 이미 저장된 날짜의 자료는 보존됩니다. 전체 기간이 모여야 기간 합계를 표시합니다.</div>}
  </div><div className="grid grid-cols-2 xl:grid-cols-5 gap-4">{[['청구 광고비 (부가세 포함)',billingTotal==null?'청구액 미수집':show(billingTotal)+'원'],[conversionLabel+' 전환 판매수량',totals.partial?'전환 자료 미수집':show(totals.units)],[conversionLabel+' 전환 매출',totals.partial?'전환 자료 미수집':show(totals.sales)+'원'],['ROAS (청구액 기준)',roas({...totals,spend:billingTotal,sales:totals.partial?null:totals.sales})],['구매 전환율',cvr({...totals,orders:totals.partial?null:totals.orders})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{value}</strong></div>)}</div>
- <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.isAdjustment?'쿠팡 정산 조정액 (Adjustment) · 원본명: '+r.sourceName:r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
+ <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.isAdjustment?'쿠팡 정산 조정액 (Adjustment) · 원본명: '+r.sourceName:r.campaignId&&r.aliases?.length>1?'캠페인 ID: '+r.campaignId+' · 정산 이름 이력: '+r.aliases.join(' / '):r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
  <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 광고비 합계는 일별 정산 보고서의 청구금액(+부가가치세) 원본입니다. ROAS는 이 청구액 기준으로 계산합니다. 캠페인별 금액은 원본의 청구 가능 광고비에 같은 과세 그룹의 실제 부가세를 비례 배분한 금액입니다. 원 단위 차이는 배분하여 합계를 원본과 맞춥니다. Adjustment 조정액은 원본의 부호대로 반영하며 표에 ‘광고비 조정’으로 별도 표시합니다. 캠페인별 배분액은 별도로 청구된 확정액이 아닙니다. 전환 매출은 맞춤보고서 주문금액 원본이며 부가세 포함 여부는 아직 확인되지 않았습니다. 임의로 10%를 더하지 않습니다.</p></section>;
 }
 
@@ -2218,6 +2239,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
