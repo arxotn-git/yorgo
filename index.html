@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v103)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v105)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -113,6 +113,10 @@
         .ads-date-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;text-align:center}.ads-date-grid button,.ads-date-grid>span{display:flex;align-items:center;justify-content:center;min-width:0;height:33px;border-radius:6px;font-size:13px}.ads-date-grid button{background:white;color:#334155;cursor:pointer;border:0}.ads-date-grid button:hover{background:#eff6ff}.ads-date-grid button:disabled{background:#f1f5f9;color:#b1b5bd;cursor:not-allowed}.ads-date-weekdays{color:#64748b;margin-bottom:4px}.ads-date-weekdays>span{height:24px;font-size:11px}.ads-date-hint{margin-top:10px!important;padding-top:8px;border-top:1px solid #e2e8f0;color:#64748b;font-size:11px;line-height:1.6}
         .ads-day-step{display:inline-flex;align-items:center;gap:2px;border:1px solid #cbd5e1;border-radius:8px;padding:2px;background:white}.ads-day-step button{width:32px;height:36px;border:0;border-radius:5px;background:white;color:#334155;font-size:22px;font-weight:700;cursor:pointer}.ads-day-step button:hover{background:#e2e8f0}.ads-day-step button:disabled{color:#cbd5e1;background:#f8fafc;cursor:not-allowed}
 
+        .stock-run-date{position:relative;display:inline-flex;align-items:center;justify-content:center;width:100%;border:0;padding:0;background:transparent;color:inherit;font:inherit;line-height:inherit;white-space:nowrap;cursor:pointer;border-radius:4px}
+        .stock-run-date:hover{background:#94a3b81a}.stock-run-date:focus-visible{outline:2px solid #64748b;outline-offset:4px}
+        .stock-run-dot{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:#94a3b8;border:1px solid #94a3b8;pointer-events:none}
+        .stock-run-dot.is-open{background:transparent;border-color:#64748b}
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -121,8 +125,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 103;
-const APP_UPDATED_AT = "2026-11-02 15:28"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 105;
+const APP_UPDATED_AT = "2026-11-02 17:10"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -1157,6 +1161,18 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 광고비 합계는 일별 정산 보고서의 청구금액(+부가가치세) 원본입니다. ROAS는 이 청구액 기준으로 계산합니다. 캠페인별 금액은 원본의 청구 가능 광고비에 같은 과세 그룹의 실제 부가세를 비례 배분한 금액입니다. 원 단위 차이는 배분하여 합계를 원본과 맞춥니다. Adjustment 조정액은 원본의 부호대로 반영하며 표에 ‘광고비 조정’으로 별도 표시합니다. 캠페인별 배분액은 별도로 청구된 확정액이 아닙니다. 전환 매출은 맞춤보고서 주문금액 원본이며 부가세 포함 여부는 아직 확인되지 않았습니다. 임의로 10%를 더하지 않습니다.</p></section>;
 }
 
+function StockRunHeading({date,info,expanded,onToggle}){
+ if(!info||info.count<2||info.first!==date)return <span>{date.slice(5)}</span>;
+ const label=date.slice(0,10)+' 추가 기록 '+(info.count-1)+'개 '+(expanded?'접기':'펼치기');
+ return <button type="button" className="stock-run-date" aria-expanded={expanded} aria-label={label} title={label} onClick={onToggle}><span>{date.slice(5)}</span><span aria-hidden="true" className={`stock-run-dot${expanded?' is-open':''}`}/></button>;
+}
+
+const stockAutoMonth=(dates,mode,today=todayKst())=>mode==='MONTH'?null:(dates.map(date=>String(date).slice(0,10)).filter(date=>/^\d{4}-\d{2}-\d{2}$/.test(date)).sort().at(-1)||today).slice(0,7);
+function StockLoadNotice({phase,message,onRetry}){
+ const loading=phase==='loading';
+ return <div role={loading?'status':'alert'} aria-busy={loading} className="flex flex-col items-center justify-center py-24 text-center bg-white rounded-3xl border border-slate-200 shadow-sm px-6"><span aria-hidden="true" className={`text-3xl mb-4 ${loading?'animate-pulse':''}`}>{loading?'☁️':'⚠️'}</span><h3 className="text-lg font-extrabold text-slate-700">{loading?'최신 재고를 불러오는 중입니다':'재고를 불러오지 못했습니다'}</h3><p className="text-sm text-slate-500 mt-2">{message}</p>{!loading&&<button type="button" onClick={onRetry} className="mt-5 rounded-xl bg-blue-600 text-white px-4 py-2 font-bold">다시 확인</button>}</div>;
+}
+
 function App() {
     const [dbSync, setDbSync] = useState("🔄 연결 중...");
     const [lastSyncedAt, setLastSyncedAt] = useState(null);
@@ -1191,6 +1207,7 @@ function App() {
     const [dbDates,setDbDates]=useState([]);
     const [dbStock,setDbStock]=useState({});
     const [dbInc,setDbInc]=useState([]);
+    const [inventoryLoad,setInventoryLoad]=useState({phase:'loading',message:'저장된 최신 자료를 확인하고 있습니다.'});
     const [rDates,setRDates]=useState([]);
     const [rItems,setRItems]=useState([]);
     const [aOrder,setAOrder]=useState([]); 
@@ -1229,11 +1246,18 @@ function App() {
     const [srch,setSrch]=useState(""); 
 
     useEffect(()=>{
-        let snapshotSequence=0,disposed=false;
+        let snapshotSequence=0,disposed=false,settled=false,hasCachedInventory=false;
+        let loadTimer;
+        const fallbackInventory=reason=>{
+            if(disposed)return;
+            settled=true;clearTimeout(loadTimer);
+            setInventoryLoad({phase:hasCachedInventory?'cached':'error',message:hasCachedInventory?'최신 재고 연결을 확인하지 못해 이 브라우저의 보관 자료를 표시합니다. '+reason:reason});
+        };
         try{
             const raw=localStorage.getItem(LS_KEY);
             if(raw){
                 const d=JSON.parse(raw);
+                hasCachedInventory=Array.isArray(d.RD)&&d.RD.length>0&&Array.isArray(d.RI);
                 adsDecodeDocument(d).then(ads=>{if(!disposed&&snapshotSequence===0){setAdConversionDays(ads.adConversionDays);setAdBillingDays(ads.adBillingDays);}}).catch(()=>{});
                 if(d.DATES?.length)setDbDates(d.DATES);
                 if(d.STOCK&&Object.keys(d.STOCK).length)setDbStock(mergeStockHistory(d.STOCK));
@@ -1245,7 +1269,10 @@ function App() {
             }
         }catch(e){}
 
-        if (!useFirebase) { setDbSync("💾 로컬 저장소 사용 중"); return ()=>{disposed=true;}; }
+        if (!useFirebase) { setDbSync("💾 로컬 저장소 사용 중");setInventoryLoad({phase:'local',message:''});return ()=>{disposed=true;}; }
+        // Keep the first table hidden until the current cloud snapshot is decoded.
+        // Cached inventory remains available only as an explicitly labelled fallback.
+        loadTimer=setTimeout(()=>{if(!settled)fallbackInventory('연결 상태를 확인하고 새로고침해주세요.');},12000);
         
         setDbSync("🔄 클라우드 연결 중...");
         const docRef = db.doc(`yomimon_dashboard/inventory_master`);
@@ -1268,22 +1295,30 @@ function App() {
                 if (d.AORDER?.length) setAOrder(d.AORDER);
                 const savedTime=d.rocketUpdatedAt||d.updatedAt; if(savedTime){try{setLastSyncedAt(savedTime.toDate());}catch(e){}}
                 
+                hasCachedInventory=Array.isArray(d.RD)&&d.RD.length>0&&Array.isArray(d.RI);
+                settled=true;clearTimeout(loadTimer);setInventoryLoad({phase:'ready',message:''});
                 setDbSync("☁️ 실시간 연동 중");
                 try { localStorage.setItem(LS_KEY, JSON.stringify(d)); } catch(e) {}
             } else {
+                if(disposed||sequence!==snapshotSequence)return;
+                settled=true;hasCachedInventory=false;clearTimeout(loadTimer);setRDates([]);setRItems([]);setLastSyncedAt(null);
+                setInventoryLoad({phase:'ready',message:''});
                 setDbSync("🗂️ DB가 비어있습니다. 엑셀을 업로드해주세요.");
             }
             } catch(error) {
                 if(disposed||sequence!==snapshotSequence)return;
                 console.error(error);setDbSync("재고 복원 실패: "+error.message);
+                fallbackInventory('재고 자료를 복원하지 못했습니다. '+String(error.message||error));
             }
         }, (error) => {
+            if(disposed)return;
             ++snapshotSequence;
             console.error("Firestore 에러:", error);
-            setDbSync("❌ 통신 에러 (로컬 데이터 사용 중)");
+            setDbSync("❌ 재고 연결 확인 필요");
+            fallbackInventory('연결 상태를 확인하고 새로고침해주세요.');
         });
 
-        return () => {disposed=true;++snapshotSequence;unsubscribe();};
+        return () => {disposed=true;++snapshotSequence;clearTimeout(loadTimer);unsubscribe();};
     },[]);
 
     const notify=(msg,type="ok")=>{
@@ -1323,6 +1358,12 @@ function App() {
     useEffect(()=>{if(!rYears.includes(rY))setRY(rYears[0]);},[rYears]);
     useEffect(()=>{if(!rMons.includes(rM))setRM(rMons[0]);},[rY,rMons]);
 
+    const automaticStockMonth=useMemo(()=>stockAutoMonth(rDates,rMode),[rDates,rMode]);
+    useEffect(()=>{
+        if(inventoryLoad.phase==='loading'||!automaticStockMonth)return;
+        setRY(automaticStockMonth.slice(0,4));setRM(automaticStockMonth.slice(5,7));
+    },[automaticStockMonth,inventoryLoad.phase]);
+
     const nowYM=useMemo(()=>{const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;},[]);
     const lastYM=useMemo(()=>{const n=new Date();const l=new Date(n.getFullYear(),n.getMonth()-1,1);return `${l.getFullYear()}-${String(l.getMonth()+1).padStart(2,'0')}`;},[]);
 
@@ -1330,6 +1371,15 @@ function App() {
     const [showAllDailyRuns,setShowAllDailyRuns]=useState(false);
     const dateDay=(value)=>{const match=String(value).match(/^(\d{4}-\d{2}-\d{2})(?: \((\d+)\))?$/);return match?match[1]:String(value);};
     const dateRun=(value)=>{const match=String(value).match(/^\d{4}-\d{2}-\d{2}(?: \((\d+)\))?$/);return match&&match[1]?Number(match[1]):1;};
+    const [dailyRunOverrides,setDailyRunOverrides]=useState({});
+    const dailyRunGroups=useMemo(()=>{
+        const groups=new Map();
+        for(const date of rDates){const day=dateDay(date),group=groups.get(day)||{count:0,first:date};group.count++;if(dateRun(date)<dateRun(group.first))group.first=date;groups.set(day,group);}
+        return groups;
+    },[rDates]);
+    const isDailyRunExpanded=day=>Object.prototype.hasOwnProperty.call(dailyRunOverrides,day)?dailyRunOverrides[day]:showAllDailyRuns;
+    const toggleDailyRun=day=>setDailyRunOverrides(previous=>({...previous,[day]:!(Object.prototype.hasOwnProperty.call(previous,day)?previous[day]:showAllDailyRuns)}));
+    const toggleAllDailyRuns=()=>{setShowAllDailyRuns(previous=>!previous);setDailyRunOverrides({});};
     const visRD=useMemo(()=>{
         if(!rDates.length)return[];
         const days=[...new Set(rDates.map(dateDay))];
@@ -1340,11 +1390,8 @@ function App() {
         else if(rMode==='LAST')chosen=new Set(days.filter(d=>d.startsWith(lastYM)));
         else chosen=new Set(days.filter(d=>d.startsWith(rY+'-'+rM)));
         const selected=rDates.filter(d=>chosen.has(dateDay(d)));
-        if(showAllDailyRuns)return selected;
-        const latest=new Map();
-        selected.forEach(d=>{const day=dateDay(d),previous=latest.get(day);if(previous===undefined||dateRun(d)<dateRun(previous))latest.set(day,d);});
-        return selected.filter(d=>latest.get(dateDay(d))===d);
-    },[rDates,rMode,rY,rM,nowYM,lastYM,showAllDailyRuns]);
+        return selected.filter(date=>isDailyRunExpanded(dateDay(date))||dailyRunGroups.get(dateDay(date))?.first===date);
+    },[rDates,rMode,rY,rM,nowYM,lastYM,showAllDailyRuns,dailyRunOverrides,dailyRunGroups]);
 
     const filtRI=useMemo(()=>{
         return rItems.filter(item=>{
@@ -2003,7 +2050,7 @@ const handleLogin = async ev => {
                     
                     <MainViewSwitch view={view} onChange={changeView}/>
                     <div className="ml-auto flex items-center gap-2">
-                        <button type="button" onClick={()=>handleStockFetch(false)} disabled={adsBusy||excelBusy||stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{adsBusy?'광고 수집 중...':stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
+                        <button type="button" onClick={()=>handleStockFetch(false)} disabled={inventoryLoad.phase==='loading'||adsBusy||excelBusy||stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{inventoryLoad.phase==='loading'?'자료 불러오는 중…':adsBusy?'광고 수집 중...':stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
                         <a href="https://arxotn-git.github.io/receiving/receiving_index.html" 
                            className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">
                             <span>입고 관리</span>
@@ -2051,7 +2098,8 @@ const handleLogin = async ev => {
             {/* ─── 로켓배송 탭 ─── */}
             {view==="rocket"&&(
                 <main className="flex-grow w-full px-6 md:px-10 py-6 bg-slate-50 flex flex-col gap-6 animate-fade-in">
-                    {rDates.length===0?(
+                    {inventoryLoad.phase==='cached'&&<div role="note" className="rounded-2xl border border-amber-200 bg-amber-50 text-amber-900 p-4 text-sm">{inventoryLoad.message}<button type="button" onClick={()=>window.location.reload()} className="ml-3 underline font-bold">다시 확인</button></div>}
+                    {inventoryLoad.phase==='loading'||(inventoryLoad.phase==='error'&&!rDates.length)?<StockLoadNotice phase={inventoryLoad.phase} message={inventoryLoad.message} onRetry={()=>window.location.reload()}/>:rDates.length===0?(
                         <div className="flex flex-col items-center justify-center py-28 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
                             <span className="text-6xl mb-5">🚀</span>
                             <h3 className="text-xl font-extrabold text-slate-600">로켓배송 데이터가 없습니다</h3>
@@ -2075,7 +2123,7 @@ const handleLogin = async ev => {
                                             <span>재고 0개도 보기</span>
                                         </label>
                                         <button type="button" onClick={openColors} aria-expanded={showColors} className="px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">색상 설정</button>
-                                        <button type="button" onClick={()=>setShowAllDailyRuns(v=>!v)} aria-pressed={showAllDailyRuns} className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all ${showAllDailyRuns?'bg-blue-50 border-blue-300 text-blue-700':'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{showAllDailyRuns?'같은 날짜 기록 접기':'같은 날짜 기록 펼치기'}</button>
+                                        <button type="button" onClick={toggleAllDailyRuns} aria-pressed={showAllDailyRuns} className={`px-3 py-2 text-xs font-bold rounded-xl border transition-all ${showAllDailyRuns?'bg-blue-50 border-blue-300 text-blue-700':'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>{showAllDailyRuns?'같은 날짜 기록 접기':'같은 날짜 기록 펼치기'}</button>
                                         <ModeBtns mode={rMode} setMode={setRMode} color="blue"/>
                                         <div className="flex items-center gap-1 bg-slate-800 rounded-xl p-1 border border-slate-700">
                                             <Dropdown value={rY} options={rYears.map(y=>({value:y,label:`${y}년`}))} onChange={v=>{setRY(v);setRMode("MONTH");}}/>
@@ -2125,7 +2173,7 @@ const handleLogin = async ev => {
                                             <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
                                                 <th className="py-3 px-5 fc1 bg-slate-100">상품명</th><th className="py-3 px-5 fc2 bg-slate-100">구성</th><th className="py-3 px-5 fc3 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)]">SKU ID</th>
                                                 {visRD.length===0&&<th className="py-3 px-5">해당 기간 데이터 없음</th>}
-                                                {visRD.map((d,i)=><th key={d} className={`py-3 px-4 text-center sticky top-0 z-20 ${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}>{d.slice(5)}</th>)}
+                                                {visRD.map((d,i)=><th key={d} scope="col" className={`py-3 px-2 text-center sticky top-0 z-20 ${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/></th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="text-sm">
@@ -2398,6 +2446,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
