@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v101)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v102)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -79,8 +79,6 @@
         .ads-actions button:disabled{opacity:.5;cursor:wait}
         .ads-query{background:#2563eb;color:#fff;border:1px solid #2563eb}
         .ads-query:hover{background:#1d4ed8}
-        .ads-refresh{background:#fff7ed;color:#9a3412;border:1px solid #fdba74}
-        .ads-refresh:hover{background:#ffedd5}
         .ads-cancel{background:#fff1f2;color:#be123c;border:1px solid #fda4af}
         .ads-options{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:4px}
         .ads-segment{display:inline-flex;gap:4px;border-radius:12px;background:#f1f5f9;padding:4px;flex-wrap:wrap}
@@ -93,6 +91,28 @@
         .ads-panel button[aria-pressed="true"]:not(.ads-query):not(.ads-selected){background:#334155;border-color:#334155;color:white}
         .ads-panel button:focus-visible,.ads-imports label:focus-within{outline:2px solid #60a5fa;outline-offset:3px}
         @media(max-width:760px){.ads-heading{gap:14px}.ads-actions{margin-left:0;width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.ads-actions button{padding:10px 8px;font-size:13px;white-space:normal}.ads-options{align-items:flex-start}.ads-segment{width:100%}.ads-segment button{flex:1;padding:9px 8px;font-size:12px}.ads-imports{width:100%}.ads-show-tab{margin-left:0}}
+        .main-view-switch{display:inline-flex;align-items:stretch;gap:2px;margin-left:24px;padding:4px;border:1px solid #94a3b8;border-radius:13px;background:#ffffff24;box-shadow:inset 0 1px 3px #00000014}
+        .main-view-switch button{min-width:118px;min-height:38px;padding:8px 16px;border:0;border-radius:9px;background:transparent;color:#f8fafc;font-size:14px;font-weight:700;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s}
+        .main-view-switch button:hover{background:#ffffff22}.main-view-switch button[aria-pressed=true]{background:#fff;color:#0f172a;box-shadow:0 1px 4px #0002}.main-view-switch button:focus-visible{outline:2px solid #93c5fd;outline-offset:3px}
+        .ads-download{background:#047857;color:#fff;border:1px solid #047857}.ads-download:hover{background:#065f46}
+        .ads-filter-controls{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.ads-channel-field{display:flex;flex-direction:column;gap:7px}.ads-channel-field>span{font-size:12px;font-weight:700;color:#475569}
+        .ads-channel-switch{display:inline-flex;padding:4px;gap:3px;border:1px solid #94a3b8;border-radius:11px;background:#e2e8f0}
+        .ads-channel-switch button{display:inline-flex;justify-content:center;align-items:center;gap:5px;min-height:37px;min-width:75px;padding:7px 11px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#334155;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s}
+        .ads-channel-switch button:hover{background:#f1f5f9}.ads-channel-check{width:12px;font-size:12px}.ads-channel-switch button[aria-pressed=false] .ads-channel-check{visibility:hidden}
+        .ads-panel .ads-channel-switch button[aria-pressed=true]{background:#334155;border-color:#334155;color:#fff;box-shadow:0 1px 3px #0002}
+        .ads-panel .ads-channel-switch button[data-channel=supplier][aria-pressed=true]{background:#047857;border-color:#047857}.ads-panel .ads-channel-switch button[data-channel=wing][aria-pressed=true]{background:#6d28d9;border-color:#6d28d9}
+        .ads-channel-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:7px;font-size:12px;font-weight:700}.ads-channel-badge[data-channel=supplier]{background:#ecfdf5;color:#065f46}.ads-channel-badge[data-channel=wing]{background:#f5f3ff;color:#5b21b6}
+        .ads-filter-controls input,.ads-filter-controls select{min-height:45px}.ads-export-error{padding:10px 12px;border:1px solid #fecaca;border-radius:9px;background:#fef2f2;color:#991b1b;font-size:13px}
+        @media(max-width:760px){.main-view-switch{margin-left:0}.main-view-switch button{min-width:108px;padding:8px 12px}.ads-channel-field{width:100%}.ads-channel-switch{width:100%}.ads-channel-switch button{flex:1}.ads-filter-controls{align-items:stretch}.ads-filter-controls input,.ads-filter-controls select{width:100%}}
+
+        .ads-date-field{position:relative;display:inline-flex}.ads-date-trigger{display:inline-flex;justify-content:space-between;align-items:center;gap:9px;min-height:42px;min-width:138px;border:1px solid #cbd5e1;border-radius:8px;padding:8px 12px;background:white;font-size:15px;color:#1e293b;cursor:pointer;font-variant-numeric:tabular-nums}
+        .ads-date-trigger.ads-date-preset{min-width:auto;font-weight:700;padding:8px 16px}.ads-date-trigger:disabled{opacity:.5;cursor:not-allowed}
+        .ads-date-popover{position:absolute;top:100%;z-index:60;margin-top:8px;padding:12px;border:1px solid #cbd5e1;border-radius:12px;background:white;box-shadow:0 12px 28px #0f172a24;box-sizing:border-box}
+        .ads-date-controls{display:flex;align-items:center;gap:7px;margin-bottom:12px}.ads-date-controls select{min-width:0!important;min-height:32px!important;height:32px;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#1e293b;font-size:13px;padding:2px 5px;font-weight:700}
+        .ads-date-controls button{height:32px;width:30px;border:1px solid #cbd5e1;border-radius:6px;background:white;color:#334155;font-size:20px;cursor:pointer}.ads-date-controls button:disabled,.ads-date-controls option:disabled{background:#f1f5f9;color:#a1a1aa;cursor:not-allowed}
+        .ads-date-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;text-align:center}.ads-date-grid button,.ads-date-grid>span{display:flex;align-items:center;justify-content:center;min-width:0;height:33px;border-radius:6px;font-size:13px}.ads-date-grid button{background:white;color:#334155;cursor:pointer;border:0}.ads-date-grid button:hover{background:#eff6ff}.ads-date-grid button:disabled{background:#f1f5f9;color:#b1b5bd;cursor:not-allowed}.ads-date-weekdays{color:#64748b;margin-bottom:4px}.ads-date-weekdays>span{height:24px;font-size:11px}.ads-date-hint{margin-top:10px!important;padding-top:8px;border-top:1px solid #e2e8f0;color:#64748b;font-size:11px;line-height:1.6}
+        .ads-day-step{display:inline-flex;align-items:center;gap:2px;border:1px solid #cbd5e1;border-radius:8px;padding:2px;background:white}.ads-day-step button{width:32px;height:36px;border:0;border-radius:5px;background:white;color:#334155;font-size:22px;font-weight:700;cursor:pointer}.ads-day-step button:hover{background:#e2e8f0}.ads-day-step button:disabled{color:#cbd5e1;background:#f8fafc;cursor:not-allowed}
+
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -101,8 +121,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 101;
-const APP_UPDATED_AT = "2026-11-02 08:38"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 102;
+const APP_UPDATED_AT = "2026-11-02 12:39"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -677,23 +697,31 @@ const adsWriteDocument=async(tx,ref,raw,data)=>{
  tx.update(ref,patch);
 };
 const adsHasDay=(date,kind,conversionDays,billingDays)=>kind==='conversion'?conversionDays[date]?.complete===true&&Array.isArray(conversionDays[date]?.rows):billingDays[date]?.[kind]?.complete===true&&Number.isSafeInteger(billingDays[date][kind].total)&&billingDays[date][kind].total>=0&&Array.isArray(billingDays[date][kind].rows);
-const adsCollectionPlan=(dates,conversionDays,billingDays,refresh=false)=>{
+const adsCollectionPlan=(dates,conversionDays,billingDays)=>{
  const kinds=['conversion','supplier','wing'];
- const saved=new Map(dates.map(date=>[date,new Set(refresh?[]:kinds.filter(kind=>adsHasDay(date,kind,conversionDays,billingDays)))]));
+ const saved=new Map(dates.map(date=>[date,new Set(kinds.filter(kind=>adsHasDay(date,kind,conversionDays,billingDays)))]));
  const tasks=[];
- for(const chunk of adsPeriodChunks(dates))for(const kind of kinds)if(refresh||chunk.some(date=>!saved.get(date).has(kind)))tasks.push({chunk,kind});
+ for(const month of adsPeriodChunks(dates))for(const kind of kinds){
+  let chunk=[];
+  const flush=()=>{if(chunk.length){tasks.push({chunk,kind});chunk=[];}};
+  for(const date of month){if(saved.get(date).has(kind)){flush();continue;}if(chunk.length&&Date.parse(date+'T00:00:00Z')-Date.parse(chunk.at(-1)+'T00:00:00Z')!==86400000)flush();chunk.push(date);}flush();
+ }
  return {saved,tasks};
 };
 
+const ADS_MIN_DATE='2025-11-01';
 const adsLatestDate=(today=todayKst())=>new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10);
 const adsRange=(preset,today=todayKst())=>{
  const d=new Date(today+'T00:00:00Z'),day=n=>new Date(d.getTime()+n*86400000).toISOString().slice(0,10);
- if(preset==='yesterday')return [day(-1),day(-1)];
- if(preset==='year')return [today.slice(0,4)+'-01-01',day(-1)];
- if(preset==='week')return [day(-7),day(-1)];if(preset==='month')return [today.slice(0,7)+'-01',day(-1)];
- return [new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-1,1)).toISOString().slice(0,10),new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),0)).toISOString().slice(0,10)];
+ let range;
+ if(preset==='yesterday')range=[day(-1),day(-1)];
+ else if(preset==='year')range=[today.slice(0,4)+'-01-01',day(-1)];
+ else if(preset==='week')range=[day(-7),day(-1)];
+ else if(preset==='month')range=[today.slice(0,7)+'-01',day(-1)];
+ else range=[new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-1,1)).toISOString().slice(0,10),new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),0)).toISOString().slice(0,10)];
+ return [range[0]<ADS_MIN_DATE?ADS_MIN_DATE:range[0],range[1]];
 };
-const adsDates=(start,end)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end||end>adsLatestDate())throw Error('조회 기간을 확인해주세요.');const out=[];for(let d=new Date(start+'T00:00:00Z');d<=new Date(end+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1)){if(out.length>=731)throw Error('한 번에 최대 731일까지 조회할 수 있습니다.');out.push(d.toISOString().slice(0,10));}return out;};
+const adsDates=(start,end)=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||start>end||start<ADS_MIN_DATE||end>adsLatestDate())throw Error('조회 기간은 2025년 11월 1일부터 어제까지 선택해주세요.');const out=[];for(let d=new Date(start+'T00:00:00Z');d<=new Date(end+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1)){if(out.length>=731)throw Error('한 번에 최대 731일까지 조회할 수 있습니다.');out.push(d.toISOString().slice(0,10));}return out;};
 // Parse observed Coupang custom-report columns; never reinterpret total conversion as indirect.
 const parseConversionReport = matrix => {
  const norm=x=>String(x??'').replace(/\s/g,'');
@@ -972,14 +1000,20 @@ function AdsProgress({job,busy}){
  </div>;
 }
 
-const adsCalendarModel=(month,latest)=>{
+const adsCalendarModel=(month,latest,earliest=ADS_MIN_DATE)=>{
  const first=new Date(month+'-01T00:00:00Z'),year=first.getUTCFullYear(),index=first.getUTCMonth();
  const length=new Date(Date.UTC(year,index+1,0)).getUTCDate(),offset=first.getUTCDay();
  const shift=amount=>new Date(Date.UTC(year,index+amount,1)).toISOString().slice(0,7);
- return {year,month:index+1,previous:shift(-1),next:shift(1),canNext:month<latest.slice(0,7),cells:Array.from({length:Math.ceil((offset+length)/7)*7},(_,i)=>{const day=i-offset+1;if(day<1||day>length)return null;const date=month+'-'+String(day).padStart(2,'0');return {date,day,disabled:date>latest};})};
+ return {year,month:index+1,previous:shift(-1),next:shift(1),canPrevious:month>earliest.slice(0,7),canNext:month<latest.slice(0,7),years:Array.from({length:Number(latest.slice(0,4))-Number(earliest.slice(0,4))+1},(_,i)=>Number(earliest.slice(0,4))+i),months:Array.from({length:12},(_,i)=>{const value=String(i+1).padStart(2,'0'),key=year+'-'+value;return {value,label:(i+1)+'월',disabled:key<earliest.slice(0,7)||key>latest.slice(0,7)};}),cells:Array.from({length:Math.ceil((offset+length)/7)*7},(_,i)=>{const day=i-offset+1;if(day<1||day>length)return null;const date=month+'-'+String(day).padStart(2,'0');return {date,day,disabled:date<earliest||date>latest};})};
 };
-function AdsSingleDayPicker({value,latest,active,disabled,onSelect}){
- const [open,setOpen]=useState(false),[month,setMonth]=useState((value||latest).slice(0,7)),[position,setPosition]=useState({left:0,width:320});
+const adsShiftSingleDay=(range,amount,latest=adsLatestDate())=>{
+ if(range[0]!==range[1]||!/^\d{4}-\d{2}-\d{2}$/.test(range[0]))return null;
+ const time=Date.parse(range[0]+'T00:00:00Z');if(!Number.isFinite(time))return null;
+ const next=new Date(time+amount*86400000).toISOString().slice(0,10);
+ return next<ADS_MIN_DATE||next>latest?null:[next,next];
+};
+function AdsDatePicker({value,latest,active=false,disabled=false,onSelect,label='광고 특정일',triggerText=null}){
+ const [open,setOpen]=useState(false),[month,setMonth]=useState((value&&value>=ADS_MIN_DATE&&value<=latest?value:latest).slice(0,7)),[position,setPosition]=useState({left:0,width:320});
  const ref=useRef(null),model=adsCalendarModel(month,latest);
  useEffect(()=>{
   if(!open)return;
@@ -991,19 +1025,49 @@ function AdsSingleDayPicker({value,latest,active,disabled,onSelect}){
  useEffect(()=>{if(disabled)setOpen(false);},[disabled]);
  const toggle=()=>{
   if(disabled)return;
-  if(!open){const box=ref.current?.getBoundingClientRect(),width=Math.min(320,window.innerWidth-24);setPosition({width,left:box?Math.max(12,Math.min(box.left,window.innerWidth-width-12))-box.left:0});setMonth((value&&value<=latest?value:latest).slice(0,7));}
+  if(!open){const box=ref.current?.getBoundingClientRect(),width=Math.min(320,window.innerWidth-24);setPosition({width,left:box?Math.max(12,Math.min(box.left,window.innerWidth-width-12))-box.left:0});setMonth((value&&value>=ADS_MIN_DATE&&value<=latest?value:latest).slice(0,7));}
   setOpen(!open);
  };
- const choose=date=>{if(disabled||date>latest)return;onSelect(date);setOpen(false);};
- return <div ref={ref} className="relative inline-flex">
-  <button type="button" disabled={disabled} onClick={toggle} aria-pressed={active} aria-expanded={open} aria-haspopup="dialog" className={`border rounded-lg px-4 py-2 font-bold transition-colors disabled:opacity-50 ${active||open?'bg-blue-600 border-blue-600 text-white shadow-sm':'bg-white border-slate-200 text-slate-600 hover:bg-blue-50'}`}>특정일</button>
-  {open&&<div role="dialog" aria-label="광고 특정일 선택" className="absolute top-full z-50 mt-2 rounded-xl border border-blue-200 bg-white p-3 shadow-xl" style={position}>
-   <div className="flex items-center justify-between gap-2 mb-3"><button type="button" aria-label="이전 달" onClick={()=>setMonth(model.previous)} className="rounded-md border px-2 py-1 text-sm text-blue-700 hover:bg-blue-50">이전</button><strong aria-live="polite" className="text-sm text-slate-800">{model.year}년 {model.month}월</strong><button type="button" aria-label="다음 달" disabled={!model.canNext} onClick={()=>{if(model.canNext)setMonth(model.next);}} className="rounded-md border px-2 py-1 text-sm text-blue-700 hover:bg-blue-50 disabled:bg-slate-50 disabled:text-slate-300 disabled:cursor-not-allowed">다음</button></div>
-   <div className="grid grid-cols-7 text-center text-xs text-slate-500 mb-1">{['일','월','화','수','목','금','토'].map(day=><span key={day} className="py-1">{day}</span>)}</div>
-   <div className="grid grid-cols-7 gap-1">{model.cells.map((cell,index)=>cell?<button key={cell.date} type="button" aria-label={cell.date+' 선택'} aria-pressed={cell.date===value} disabled={disabled||cell.disabled} onClick={()=>choose(cell.date)} className={`h-9 rounded-md text-sm transition-colors ${cell.disabled?'bg-slate-100 text-slate-300 cursor-not-allowed':cell.date===value?'bg-blue-600 text-white font-bold':'text-slate-700 hover:bg-blue-50'}`}>{cell.day}</button>:<span key={'blank-'+index} className="h-9"/>)}</div>
-   <p className="mt-3 border-t pt-2 text-xs leading-5 text-slate-500">날짜 하나를 선택하면 시작일·종료일에 함께 적용됩니다. 어제까지 선택할 수 있습니다.</p>
+ const choose=date=>{if(disabled||date<ADS_MIN_DATE||date>latest)return;onSelect(date);setOpen(false);};
+ const moveMonth=next=>{if(next<ADS_MIN_DATE.slice(0,7)||next>latest.slice(0,7))return;setMonth(next);};
+ const chooseYear=year=>{if(!model.years.includes(Number(year)))return;const next=year+'-'+String(model.month).padStart(2,'0');setMonth(next<ADS_MIN_DATE.slice(0,7)?ADS_MIN_DATE.slice(0,7):next>latest.slice(0,7)?latest.slice(0,7):next);};
+ return <div ref={ref} className="ads-date-field">
+  <button type="button" aria-label={label+' 달력'} disabled={disabled} onClick={toggle} aria-pressed={active||open} aria-expanded={open} aria-haspopup="dialog" className={'ads-date-trigger'+(triggerText?' ads-date-preset':'')}>{triggerText||value}{!triggerText&&<span aria-hidden="true">▦</span>}</button>
+  {open&&<div role="dialog" aria-label={label+' 선택'} className="ads-date-popover" style={position}>
+   <div className="ads-date-controls"><button type="button" aria-label={label+' 이전 달'} disabled={!model.canPrevious} onClick={()=>moveMonth(model.previous)}>‹</button><select aria-label={label+' 연도'} value={model.year} onChange={e=>chooseYear(e.target.value)}>{model.years.map(year=><option key={year} value={year}>{year}년</option>)}</select><select aria-label={label+' 월'} value={String(model.month).padStart(2,'0')} onChange={e=>moveMonth(model.year+'-'+e.target.value)}>{model.months.map(item=><option key={item.value} value={item.value} disabled={item.disabled}>{item.label}</option>)}</select><button type="button" aria-label={label+' 다음 달'} disabled={!model.canNext} onClick={()=>moveMonth(model.next)}>›</button></div>
+   <div className="ads-date-grid ads-date-weekdays">{['일','월','화','수','목','금','토'].map(day=><span key={day}>{day}</span>)}</div>
+   <div className="ads-date-grid">{model.cells.map((cell,index)=>cell?<button key={cell.date} type="button" aria-label={cell.date+' 선택'} aria-pressed={cell.date===value} disabled={disabled||cell.disabled} onClick={()=>choose(cell.date)}>{cell.day}</button>:<span key={'blank-'+index}/>)}</div>
+   <p className="ads-date-hint">2025년 11월 1일 ~ 어제까지 선택할 수 있습니다.</p>
   </div>}
  </div>;
+}
+function AdsSingleDayPicker(props){return <AdsDatePicker {...props} label="광고 특정일" triggerText="특정일"/>;}
+
+
+const adsBuildResultWorkbook=({rows,columns,range,source,conversionMode,mode,query,sort})=>{
+ if(typeof ExcelJS==='undefined')throw Error('엑셀 기능을 불러오지 못했습니다. 페이지를 새로고침해주세요.');
+ if(!rows.length)throw Error('다운로드할 조회 결과가 없습니다.');
+ const workbook=new ExcelJS.Workbook();workbook.creator='요미몬';workbook.created=new Date();
+ const sheet=workbook.addWorksheet('광고 조회 결과');
+ sheet.columns=columns.map(([key,label])=>({header:label,key,width:key==='name'?46:key==='date'?15:key==='supplier'?14:key==='spend'||key==='sales'?23:20}));
+ for(const row of rows){
+  const value=key=>key==='supplier'?(row.supplier?'로켓배송':'윙'):key==='roas'?(row.sales==null||row.spend==null||row.spend<=0?null:row.sales/row.spend):key==='cvr'?(row.orders==null||!row.clicks?null:row.orders/row.clicks):row[key];
+  const values=columns.map(([key])=>{const v=value(key);return v==null?'—':v;});
+  const output=sheet.addRow(values);
+  columns.forEach(([key],i)=>{const cell=output.getCell(i+1);if(['spend','sales','units'].includes(key))cell.numFmt='#,##0';if(['roas','cvr'].includes(key))cell.numFmt='0.00%';cell.alignment={vertical:'middle',horizontal:['name','date','supplier'].includes(key)?'left':'right'};});
+  output.height=23;
+ }
+ const header=sheet.getRow(1);header.height=28;header.eachCell(cell=>{cell.font={bold:true,color:{argb:'FFFFFFFF'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF334155'}};cell.alignment={vertical:'middle',horizontal:'left'};});
+ sheet.views=[{state:'frozen',ySplit:1}];sheet.autoFilter={from:{row:1,column:1},to:{row:sheet.rowCount,column:columns.length}};
+ const conditions=workbook.addWorksheet('조회 조건');conditions.columns=[{header:'항목',key:'item',width:22},{header:'조회 조건',key:'value',width:65}];
+ const sourceLabel=source==='supplier'?'로켓배송':source==='wing'?'윙':'전체',conversionLabel=conversionMode==='direct'?'직접 전환':conversionMode==='indirect'?'간접 전환':'총 전환 (직접+간접)';
+ for(const [item,value] of [['시작일',range[0]],['종료일',range[1]],['판매방식',sourceLabel],['전환 유형',conversionLabel],['집계 방식',mode==='daily'?'날짜별 · 캠페인별':'캠페인별 기간 합계'],['캠페인 검색어',query||'전체'],['정렬',(columns.find(([key])=>key===sort.key)?.[1]||sort.key)+' · '+(sort.direction==='asc'?'오름차순':'내림차순')],['표시 행 수',rows.length],['지표 기준','직접·간접 전환 14일 / 청구 광고비 부가세 포함'],['빈 값','—는 미수집 또는 계산 불가이며 0이 아닙니다.']])conditions.addRow({item,value});
+ conditions.getRow(1).font={bold:true};conditions.views=[{state:'frozen',ySplit:1}];
+ return workbook;
+};
+
+function MainViewSwitch({view,onChange}){
+ return <nav aria-label="주요 화면" className="main-view-switch">{[['rocket','🚀 재고 현황'],['ads','📊 광고 현황']].map(([key,label])=><button type="button" key={key} aria-pressed={key==='ads'?view==='ads':view!=='ads'} onClick={()=>onChange(key)}>{label}</button>)}</nav>;
 }
 
 function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCancel,onReportImport,onBillingImport,failedFile=null}){
@@ -1013,6 +1077,7 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const conversionLabel=conversionMode==='total'?'총':conversionMode==='indirect'?'간접':'직접';
  const conversionDescription=conversionMode==='total'?'총 전환 (직접+간접)':conversionLabel+' 전환';
  const [selectedPreset,setSelectedPreset]=useState('yesterday');
+ const [exporting,setExporting]=useState(false),[exportError,setExportError]=useState('');
  const dates=useMemo(()=>{try{return adsDates(...range);}catch{return [];}},[range]);
  const matchesSource=r=>source==='all'||(source==='supplier'?r.supplier:!r.supplier);
  const channels=source==='all'?['supplier','wing']:[source];
@@ -1034,22 +1099,33 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const toggleSort=key=>setSort(previous=>({key,direction:previous.key===key?(previous.direction==='asc'?'desc':'asc'):['name','supplier','date'].includes(key)?'asc':'desc'}));
  const show=n=>n==null?'미수집':Number(n).toLocaleString('ko-KR');const roas=r=>r.sales==null||r.spend==null?'—':r.spend>0?(r.sales/r.spend*100).toFixed(2)+'%':'—';
  const cvr=r=>r.orders==null||!r.clicks?'—':(r.orders/r.clicks*100).toFixed(2)+'%';
- return <section className="ads-panel m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"> <div className="ads-heading"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">{conversionDescription} · 14일 기여 기준</p></div><div className="ads-actions" role="group" aria-label="광고 자료 조회 작업"><button type="button" disabled={busy} onClick={()=>onSync(range,{showTab})} className="ads-query" title="보관 자료를 먼저 표시하고 빠진 보고서만 가져옵니다.">{busy?'자료 처리 중…':'조회 / 누락분 수집'}</button><button type="button" disabled={busy} onClick={()=>onSync(range,{showTab,refresh:true})} className="ads-refresh" title="저장된 자료가 있어도 선택 기간 전체를 쿠팡에서 다시 가져옵니다.">쿠팡에서 다시 받기</button>{busy&&<button type="button" onClick={onCancel} className="ads-cancel">수집 중단</button>}</div></div>
+ const downloadResults=async()=>{
+  if(exporting||busy||!displayRows.length)return;setExporting(true);setExportError('');
+  try{
+   const workbook=adsBuildResultWorkbook({rows:displayRows,columns,range,source,conversionMode,mode,query,sort});
+   const buffer=await workbook.xlsx.writeBuffer();
+   const url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+   const link=document.createElement('a');link.href=url;link.download='Yorgo_광고_'+range[0]+'_'+range[1]+'_'+(source==='all'?'전체':source==='supplier'?'로켓배송':'윙')+'.xlsx';
+   document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(error){setExportError('엑셀 다운로드 실패: '+String(error.message||error));}finally{setExporting(false);}
+ };
+ return <section className="ads-panel m-6 md:m-10 space-y-5"><div className="bg-white rounded-2xl border p-6 space-y-4"> <div className="ads-heading"><div><h2 className="text-xl font-extrabold">📊 광고 성과 현황</h2><p className="text-sm text-slate-500 mt-1">{conversionDescription} · 14일 기여 기준</p></div><div className="ads-actions" role="group" aria-label="광고 자료 조회 작업"><button type="button" disabled={busy} onClick={()=>onSync(range,{showTab})} className="ads-query" title="보관 자료를 먼저 표시하고 빠진 보고서만 가져옵니다.">{busy?'자료 처리 중…':'조회'}</button><button type="button" disabled={busy||exporting||!displayRows.length} onClick={downloadResults} className="ads-download" title="현재 검색·필터·정렬된 광고 목록을 엑셀로 저장합니다.">{exporting?'엑셀 저장 중…':'엑셀 다운로드'}</button>{busy&&<button type="button" onClick={onCancel} className="ads-cancel">수집 중단</button>}</div></div>
  <div className="ads-options"><div role="group" aria-label="전환 유형" className="ads-segment">{[['total','총 전환 (직접+간접)'],['direct','직접 전환'],['indirect','간접 전환']].map(([key,label])=><button key={key} type="button" aria-pressed={conversionMode===key} onClick={()=>setConversionMode(key)} className={conversionMode===key?'ads-selected':''}>{label}</button>)}</div><div className="ads-imports" role="group" aria-label="엑셀 반영"><label>맞춤보고서 엑셀<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onReportImport(file);e.target.value='';}}/></label><label>정산보고서 엑셀<input type="file" accept=".xlsx" className="hidden" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)onBillingImport(file);e.target.value='';}}/></label><label className="ads-show-tab"><input type="checkbox" checked={showTab} disabled={busy} onChange={e=>setShowTab(e.target.checked)}/>수집 화면 표시</label></div></div>
- <p className="text-xs text-slate-500">기간을 바꾸면 보관 자료를 바로 표시합니다. ‘조회 / 누락분 수집’은 빠진 보고서만, ‘쿠팡에서 다시 받기’는 선택 기간 전체를 다시 가져옵니다.</p>
+ <p className="text-xs text-slate-500">기간을 바꾸면 저장된 자료를 바로 표시합니다. ‘조회’를 누르면 없는 자료만 수집합니다. 엑셀 다운로드에는 현재 목록의 필터와 정렬이 그대로 반영됩니다.</p>
  <details className="ads-basis"><summary>지표 기준 · 출처</summary> <p className="text-sm text-blue-800 font-semibold">총 전환 = 직접 전환 + 간접 전환 · 쿠팡 대시보드 전환 매출은 같은 기간·판매방식의 총 전환과 비교하세요.</p>
  <p className="text-xs text-slate-500">출처: 쿠팡 광고센터 → 광고보고서 → 맞춤 보고서 → 맞춤 보고서 → 일별. 현재 <strong>{conversionDescription}의 주문수·판매수량·전환 매출액(14일)</strong>입니다. 광고 클릭에 귀속된 실적이며 실제 구매일 기준 실적은 아닙니다.</p>
 </details>
- <div className="ads-filters"> <div className="flex flex-wrap gap-2">{[['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달'],['year','올해']].map(([key,label])=><button key={key} disabled={busy||(key==='month'&&todayKst().slice(8)==='01')||(key==='year'&&todayKst().slice(5)==='01-01')} onClick={()=>{setRange(adsRange(key));setSelectedPreset(key);}} aria-pressed={selectedPreset===key} className={`border rounded-lg px-4 py-2 font-bold transition-colors ${selectedPreset===key?"bg-blue-600 border-blue-600 text-white shadow-sm":"bg-white border-slate-200 text-slate-600 hover:bg-blue-50"}`}>{label}</button>)}<AdsSingleDayPicker value={range[0]} latest={adsLatestDate()} active={selectedPreset==='single'} disabled={busy} onSelect={date=>{setRange([date,date]);setSelectedPreset('single');}}/><input aria-label="광고 시작일" type="date" value={range[0]} max={adsLatestDate()} disabled={busy} onChange={e=>{if(e.target.value>adsLatestDate())return;setRange([e.target.value,range[1]]);setSelectedPreset(null);}} className="border rounded-lg px-3"/><span>~</span><input aria-label="광고 종료일" type="date" value={range[1]} max={adsLatestDate()} disabled={busy} onChange={e=>{if(e.target.value>adsLatestDate())return;setRange([range[0],e.target.value]);setSelectedPreset(null);}} className="border rounded-lg px-3"/>{selectedPreset===null&&<span className="self-center text-xs font-bold text-blue-700">직접 설정</span>}</div>
- <div className="flex flex-wrap gap-3"><div className="inline-flex gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="광고 배송 유형">{[['supplier','로켓배송'],['wing','윙'],['all','전체']].map(([key,label])=><button key={key} type="button" aria-pressed={source===key} onClick={()=>setSource(key)} className={`rounded-lg px-4 py-2 text-sm font-bold transition-colors ${source===key?'bg-blue-600 text-white shadow-sm':'text-slate-600 hover:bg-white'}`}>{label}</button>)}</div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
+ <div className="ads-filters"> <div className="flex flex-wrap gap-2">{[['yesterday','어제'],['week','일주일'],['month','이번달'],['lastmonth','지난달'],['year','올해']].map(([key,label])=><button key={key} disabled={busy||adsRange(key)[1]<ADS_MIN_DATE||(key==='month'&&todayKst().slice(8)==='01')||(key==='year'&&todayKst().slice(5)==='01-01')} onClick={()=>{setRange(adsRange(key));setSelectedPreset(key);}} aria-pressed={selectedPreset===key} className={`border rounded-lg px-4 py-2 font-bold transition-colors ${selectedPreset===key?"bg-blue-600 border-blue-600 text-white shadow-sm":"bg-white border-slate-200 text-slate-600 hover:bg-blue-50"}`}>{label}</button>)}<AdsSingleDayPicker value={range[0]} latest={adsLatestDate()} active={selectedPreset==='single'} disabled={busy} onSelect={date=>{setRange([date,date]);setSelectedPreset('single');}}/><AdsDatePicker label="광고 시작일" value={range[0]} latest={adsLatestDate()} disabled={busy} onSelect={date=>{setRange([date,date>range[1]?date:range[1]]);setSelectedPreset(null);}}/><span>~</span><AdsDatePicker label="광고 종료일" value={range[1]} latest={adsLatestDate()} disabled={busy} onSelect={date=>{setRange([date<range[0]?date:range[0],date]);setSelectedPreset(null);}}/>{range[0]===range[1]&&<div className="ads-day-step" role="group" aria-label="특정일 이동"><button type="button" aria-label="이전 날짜" title="시작일·종료일을 하루 전으로" disabled={busy||!adsShiftSingleDay(range,-1)} onClick={()=>{const next=adsShiftSingleDay(range,-1);if(next){setRange(next);setSelectedPreset('single');}}}>‹</button><button type="button" aria-label="다음 날짜" title="시작일·종료일을 하루 뒤로" disabled={busy||!adsShiftSingleDay(range,1)} onClick={()=>{const next=adsShiftSingleDay(range,1);if(next){setRange(next);setSelectedPreset('single');}}}>›</button></div>}{selectedPreset===null&&<span className="self-center text-xs font-bold text-blue-700">직접 설정</span>}</div>
+ <div className="ads-filter-controls"><div className="ads-channel-field"><span>판매방식 선택</span><div className="ads-channel-switch" role="group" aria-label="광고 배송 유형">{[['all','전체'],['supplier','🚀 로켓배송'],['wing','🛒 윙']].map(([key,label])=><button key={key} type="button" data-channel={key} aria-pressed={source===key} onClick={()=>setSource(key)}><span className="ads-channel-check" aria-hidden="true">✓</span>{label}</button>)}</div></div><input placeholder="캠페인 이름 검색" value={query} onChange={e=>setQuery(e.target.value)} className="border rounded-lg p-2"/><select aria-label="광고 집계 방식" value={mode} onChange={e=>setMode(e.target.value)} className="border rounded-lg p-2"><option value="campaign">캠페인별 기간 합계</option><option value="daily">날짜별 · 캠페인별</option></select></div>
 </div>
- {!busy&&dates.length>0&&<p className="text-sm font-semibold text-emerald-700" role="note">저장된 자료에서 표시합니다. 날짜 변경 시 쿠팡에 접속하지 않습니다. 누락된 자료만 수집 버튼으로 가져올 수 있습니다.</p>}
+ {!busy&&dates.length>0&&<p className="text-sm font-semibold text-emerald-700" role="note">저장된 자료에서 표시합니다. 날짜 변경 시 쿠팡에 접속하지 않습니다. 누락된 자료만 조회 버튼으로 가져올 수 있습니다.</p>}
  <p className="text-sm text-slate-600">{range.join(' ~ ')} · 로켓 청구액 {dates.filter(d=>billingDays[d]?.supplier?.complete).length}/{dates.length}일 · 윙 청구액 {dates.filter(d=>billingDays[d]?.wing?.complete).length}/{dates.length}일 · 로켓·윙 전환 {conversionAvailable.length}/{dates.length}일</p><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><p className={`text-sm whitespace-pre-wrap ${jobCancelled?'text-orange-800':jobFailed?'text-red-700':busy?'text-blue-700':'text-emerald-700'}`} role="status">{showJob?status:'선택 기간의 보관 자료를 표시합니다.'}</p>{jobNeedsLogin&&<a className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1 text-sm font-bold text-amber-900" href="https://advertising.coupang.com/marketing/campaign/registration?goalType%3DSALES&_cap_client=SUPPLIERHUB" target="_blank" rel="noopener noreferrer">쿠팡 광고센터 로그인</a>}</div>
  {showJob&&<AdsProgress job={job} busy={busy}/>}
  {failedFile&&failedFile.startDate===range[0]&&failedFile.endDate===range[1]&&<div role="note" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 space-y-2"><p>읽기에 실패한 {failedFile.kind==='supplier'?'로켓':failedFile.kind==='wing'?'윙':'전환'} 원본 · {failedFile.startDate} ~ {failedFile.endDate}. 이 파일을 보존했습니다.</p><a href={failedFile.url} download={failedFile.filename} className="inline-block rounded-lg border border-blue-300 bg-white px-3 py-2 font-bold">오류 원본 엑셀 내려받기</a><details><summary className="cursor-pointer">수집 파일의 열 이름 확인</summary><p className="mt-2 break-words">{failedFile.headers.length?failedFile.headers.join(' · '):'엑셀 파일을 읽지 못해 열 이름을 확인할 수 없습니다.'}</p></details></div>}
  {conversionsMissing&&<div role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">선택 기간 중 전환 자료가 없는 날짜: {missingConversionDates.slice(0,7).join(', ')}{missingConversionDates.length>7?' 외 '+(missingConversionDates.length-7)+'일':''}. 이미 저장된 날짜의 자료는 보존됩니다. 전체 기간이 모여야 기간 합계를 표시합니다.</div>}
+ {exportError&&<p role="alert" className="ads-export-error">{exportError}</p>}
  </div><div className="grid grid-cols-2 xl:grid-cols-5 gap-4">{[['청구 광고비 (부가세 포함)',billingTotal==null?'청구액 미수집':show(billingTotal)+'원'],[conversionLabel+' 전환 판매수량',totals.partial?'전환 자료 미수집':show(totals.units)],[conversionLabel+' 전환 매출',totals.partial?'전환 자료 미수집':show(totals.sales)+'원'],['ROAS (청구액 기준)',roas({...totals,spend:billingTotal,sales:totals.partial?null:totals.sales})],['구매 전환율',cvr({...totals,orders:totals.partial?null:totals.orders})]].map(([label,value])=><div key={label} className="bg-white border rounded-2xl p-5"><div className="text-sm text-slate-500">{label}</div><strong className="block mt-2 text-2xl">{value}</strong></div>)}</div>
- <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.isAdjustment?'쿠팡 정산 조정액 (Adjustment) · 원본명: '+r.sourceName:r.campaignId&&r.aliases?.length>1?'캠페인 ID: '+r.campaignId+' · 정산 이름 이력: '+r.aliases.join(' / '):r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4">{r.supplier?'로켓':'윙'}</td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!displayRows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
+ <div className="bg-white border rounded-2xl overflow-auto"><table className="w-full text-sm whitespace-nowrap"><thead className="bg-slate-100"><tr>{columns.map(([key,label])=><th key={key} className="p-4 text-left" aria-sort={sort.key===key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" onClick={()=>toggleSort(key)} aria-label={label+' 정렬'} className="inline-flex items-center gap-1.5 hover:text-blue-700 focus-visible:outline-blue-500"><span>{label}</span><span aria-hidden="true" className={sort.key===key?'text-orange-500':'text-slate-300'}>{sort.key===key?(sort.direction==='asc'?'▲':'▼'):'↕'}</span></button></th>)}</tr></thead><tbody>{displayRows.map((r,i)=><tr key={i} className="border-t hover:bg-slate-50">{mode==='daily'&&<td className="p-4">{r.date}</td>}<td className="p-4 font-bold" title={r.isAdjustment?'쿠팡 정산 조정액 (Adjustment) · 원본명: '+r.sourceName:r.campaignId&&r.aliases?.length>1?'캠페인 ID: '+r.campaignId+' · 정산 이름 이력: '+r.aliases.join(' / '):r.matchBasis==='name-similarity'?'표시명 유사성으로 연결 · 정산명: '+r.settlementName+' · 전환명: '+r.conversionName:undefined}>{r.name}</td><td className="p-4"><span className="ads-channel-badge" data-channel={r.supplier?'supplier':'wing'}>{r.supplier?'로켓배송':'윙'}</span></td><td className="p-4">{r.spend==null?'—':show(r.spend)}</td><td className="p-4">{r.units==null?'—':show(r.units)}</td><td className="p-4">{r.sales==null?'—':show(r.sales)}</td><td className="p-4 font-bold text-blue-700">{roas(r)}</td><td className="p-4">{cvr(r)}</td></tr>)}</tbody></table>{!displayRows.length&&<p className="p-10 text-center text-slate-500">표시할 자료가 없습니다. 기간을 선택하고 수집해주세요.</p>}</div>
  <p className="text-xs text-slate-500">전환 수량·매출은 맞춤보고서의 직접·간접 전환(14일)을 구분하여 수집합니다. 전체 행 확인에 실패하면 해당 날짜는 저장하지 않습니다. 광고비 합계는 일별 정산 보고서의 청구금액(+부가가치세) 원본입니다. ROAS는 이 청구액 기준으로 계산합니다. 캠페인별 금액은 원본의 청구 가능 광고비에 같은 과세 그룹의 실제 부가세를 비례 배분한 금액입니다. 원 단위 차이는 배분하여 합계를 원본과 맞춥니다. Adjustment 조정액은 원본의 부호대로 반영하며 표에 ‘광고비 조정’으로 별도 표시합니다. 캠페인별 배분액은 별도로 청구된 확정액이 아닙니다. 전환 매출은 맞춤보고서 주문금액 원본이며 부가세 포함 여부는 아직 확인되지 않았습니다. 임의로 10%를 더하지 않습니다.</p></section>;
 }
 
@@ -1524,7 +1600,7 @@ function App() {
       catch(e){const reason='중단 응답을 확인하지 못했습니다: '+String(e.message||e);setAdsStatus(reason+' · 확장 프로그램을 새로고침해주세요.');setAdsJob(previous=>({...previous,phase:'error',label:reason,errorMessage:reason}));}
       finally{adsBusyRef.current=false;setAdsBusy(false);}
     };
-    const syncAds = async (range=null,{showTab=false,refresh=false}={}) => {
+    const syncAds = async (range=null,{showTab=false}={}) => {
       if(adsBusyRef.current)return;
       adsBusyRef.current=true;setAdsBusy(true);const run=++adsRunRef.current,current=()=>adsRunRef.current===run;
       let dates=[],savedTasks=0,completed=0,requestLabel='보관 자료 확인',workerStarted=false,saved=new Map();
@@ -1532,7 +1608,7 @@ function App() {
       try{
         dates=adsDates(...(range||adsRange('yesterday'))).sort();if(!dates.length)throw Error('조회할 날짜가 없습니다.');
         let cache={adConversionDays,adBillingDays};
-        let plan=adsCollectionPlan(dates,cache.adConversionDays,cache.adBillingDays,refresh);
+        let plan=adsCollectionPlan(dates,cache.adConversionDays,cache.adBillingDays);
         // A fully loaded range is already in memory. Do not contact either
         // Coupang or the extension just to show it again.
         if(plan.tasks.length){
@@ -1541,7 +1617,7 @@ function App() {
           if(!snapshot.exists)throw Error('클라우드 원본이 없습니다.');
           cache=await adsDecodeDocument(snapshot.data());if(!current())return;
           setAdConversionDays(cache.adConversionDays);setAdBillingDays(cache.adBillingDays);
-          plan=adsCollectionPlan(dates,cache.adConversionDays,cache.adBillingDays,refresh);
+          plan=adsCollectionPlan(dates,cache.adConversionDays,cache.adBillingDays);
         }
         saved=plan.saved;
         const counts=()=>{savedTasks=[...saved.values()].reduce((n,set)=>n+set.size,0);completed=[...saved.values()].filter(set=>set.size===3).length;};counts();
@@ -1553,7 +1629,7 @@ function App() {
         const sessionKey='period_'+Date.now()+'_'+Math.random().toString(36).slice(2);
         const ping=await bridgeRequest('YORGO_STOCK_PING');if(!current())return;
         if(!ping.ok||!ping.adsPeriodExport||(Number(ping.bridgeRevision)||0)<101)throw Error('V101 background.js 교체 후 확장 프로그램과 웹페이지를 새로고침해주세요.');
-        setAdsJob({requestStart:dates[0],requestEnd:dates.at(-1),phase:'collecting',done:completed,total:dates.length,savedTasks,totalTasks,label:(refresh?'최신 자료 갱신':'보관 자료 확인 · 누락 보고서 수집')+' · 보고서 '+totalReports+'개',date:null});
+        setAdsJob({requestStart:dates[0],requestEnd:dates.at(-1),phase:'collecting',done:completed,total:dates.length,savedTasks,totalTasks,label:'보관 자료 확인 · 누락 보고서 수집'+' · 보고서 '+totalReports+'개',date:null});
         let reportIndex=0;
         for(const {chunk,kind} of plan.tasks){
           if(!current())return;
@@ -1561,7 +1637,7 @@ function App() {
           const label=kind==='conversion'?'로켓·윙 직접/간접 전환':kind==='supplier'?'로켓 부가세 포함 정산':'윙 부가세 포함 정산';
           requestLabel=rangeLabel+' · '+label;reportIndex++;
           setAdsJob({requestStart:dates[0],requestEnd:dates.at(-1),phase:'collecting',done:completed,total:dates.length,savedTasks,totalTasks,date:rangeLabel,label:label+' · 기간 보고서 '+reportIndex+'/'+totalReports,rowsDone:0,rowsTotal:0});
-          setAdsStatus(requestLabel+' · '+(refresh?'최신 자료 갱신':'누락 자료 수집')+' ('+reportIndex+'/'+totalReports+')');
+          setAdsStatus(requestLabel+' · '+'누락 자료 수집'+' ('+reportIndex+'/'+totalReports+')');
           workerStarted=true;
           const response=await bridgeRequest('YORGO_ADS_FETCH',[start,showTab?'foreground':'background','export',kind,end,sessionKey,reportIndex===totalReports?'last':'keep'],260000);
           if(!current())return;if(!response.ok)throw Error(response.message||response.status||'기간 보고서 조회 실패');
@@ -1573,11 +1649,12 @@ function App() {
           if(!current())return;
           setAdsJob(previous=>({...previous,phase:'saving',label:label+' · '+chunk.length+'일 일괄 저장 중'}));
           const field=kind==='conversion'?'adConversionDays':'adBillingDays',ref=db.doc('yomimon_dashboard/inventory_master');
-          await db.runTransaction(async tx=>{
+          incoming=await db.runTransaction(async tx=>{
             const snapshot=await tx.get(ref);if(!current())throw Error('CANCELLED');if(!snapshot.exists)throw Error('클라우드 원본이 없습니다.');
             const raw=snapshot.data(),data=await adsDecodeDocument(raw),next={...data[field]};
-            for(const [date,day] of Object.entries(incoming))next[date]=kind==='conversion'?day:{...(next[date]||{}),[kind]:day};
+            for(const [date,day] of Object.entries(incoming))if(!adsHasDay(date,kind,data.adConversionDays,data.adBillingDays))next[date]=kind==='conversion'?day:{...(next[date]||{}),[kind]:day};
             data[field]=next;await adsWriteDocument(tx,ref,raw,data);
+            return Object.fromEntries(chunk.map(date=>[date,kind==='conversion'?next[date]:next[date][kind]]));
           });
           if(!current())return;
           if(kind==='conversion')setAdConversionDays(previous=>({...previous,...incoming}));
@@ -1586,14 +1663,14 @@ function App() {
           setAdsJob(previous=>({...previous,done:completed,savedTasks,label:label+' · '+chunk.length+'일 저장 완료'}));
         }
         if(!current())return;
-        setAdsStatus((refresh?'최신 자료 갱신 완료':'누락 자료 수집 완료')+' · '+completed+'/'+dates.length+'일 · 이번 실행 보고서 '+totalReports+'개 · 다음 조회는 보관 자료에서 표시');
+        setAdsStatus('누락 자료 수집 완료'+' · '+completed+'/'+dates.length+'일 · 이번 실행 보고서 '+totalReports+'개 · 다음 조회는 보관 자료에서 표시');
         setAdsJob({requestStart:dates[0],requestEnd:dates.at(-1),phase:'complete',done:completed,total:dates.length,savedTasks,totalTasks,label:'기간 자료 보관 완료 · 수집 탭 닫힘',date:null});
       }catch(error){
         if(!current())return;
         const reason=String(error.message||error),needsLogin=/로그인|LOGIN_REQUIRED|SESSION_EXPIRED/.test(reason);
-        const action=refresh?'쿠팡 다시 받기':workerStarted?'누락 자료 수집':'자료 조회';
+        const action=workerStarted?'누락 자료 수집':'자료 조회';
         setAdsStatus(needsLogin?'쿠팡 광고센터 로그인이 필요합니다. 저장된 자료는 그대로 표시합니다.':action+'를 완료하지 못했습니다. 저장된 자료는 그대로 표시합니다.');
-        setAdsJob(previous=>({...previous,requestStart:dates[0],requestEnd:dates.at(-1),phase:needsLogin?'login':savedTasks?'partial':'error',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,label:requestLabel+' · '+reason,errorMessage:reason,refresh}));
+        setAdsJob(previous=>({...previous,requestStart:dates[0],requestEnd:dates.at(-1),phase:needsLogin?'login':savedTasks?'partial':'error',done:completed,total:dates.length,savedTasks,totalTasks:dates.length*3,label:requestLabel+' · '+reason,errorMessage:reason}));
       }finally{
         if(current()){
           if(workerStarted)try{await bridgeRequest('YORGO_ADS_CANCEL',[],10000);}catch{}
@@ -1888,7 +1965,7 @@ const handleLogin = async ev => {
 
                     </div>
                     
-                    <nav aria-label="주요 화면" className="flex items-center gap-2 ml-4 lg:ml-8">{[['rocket','🚀 재고 현황'],['ads','📊 광고 현황']].map(([key,label])=><button type="button" key={key} aria-pressed={view===key} onClick={()=>changeView(key)} className={`px-5 py-2.5 font-bold text-sm rounded-xl transition-colors ${view===key?'bg-white text-slate-900 shadow-sm':'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{label}</button>)}</nav>
+                    <MainViewSwitch view={view} onChange={changeView}/>
                     <div className="ml-auto flex items-center gap-2">
                         <button type="button" onClick={()=>handleStockFetch(false)} disabled={adsBusy||excelBusy||stockRun.phase==='loading'||stockRun.phase==='login'} className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-extrabold rounded-xl transition-all shadow-md active:scale-95">{adsBusy?'광고 수집 중...':stockRun.phase==='loading'?'재고 확인 중...':stockRun.phase==='login'?'쿠팡 로그인 대기 중...':'현재고 불러오기'}</button>
                         <a href="https://arxotn-git.github.io/receiving/receiving_index.html" 
@@ -2241,7 +2318,7 @@ const handleLogin = async ev => {
 
             {}
             {/* 공통 엑셀 업로드 */}
-            <div className="px-6 md:px-10 pb-10 w-full mt-auto">
+            {view!=='ads'&&<div className="px-6 md:px-10 pb-10 w-full mt-auto">
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
                     <div className="flex flex-wrap justify-between items-start gap-4">
                       <div>
@@ -2272,7 +2349,7 @@ const handleLogin = async ev => {
                         <h5 className="text-sm font-extrabold text-indigo-950">여기에 엑셀 파일을 드래그 앤 드롭 하세요</h5>
                     </div>
                 </div>
-            </div>
+            </div>}
 
             <footer className="bg-slate-900 text-slate-500 text-xs py-6 border-t border-slate-800 text-center">
                 <p>© 2026 요미몬(주) All Rights Reserved.</p>
@@ -2285,6 +2362,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
