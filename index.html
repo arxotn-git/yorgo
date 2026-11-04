@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v106)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v107)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -117,6 +117,7 @@
         .stock-run-date:hover{background:#94a3b81a}.stock-run-date:focus-visible{outline:2px solid #64748b;outline-offset:4px}
         .stock-run-dot{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:#94a3b8;border:1px solid #94a3b8;pointer-events:none}
         .stock-run-dot.is-open{background:transparent;border-color:#64748b}
+        .dashboard-pane[hidden]{display:none!important}
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -125,8 +126,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 106;
-const APP_UPDATED_AT = "2026-11-03 20:07"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 107;
+const APP_UPDATED_AT = "2026-11-04 09:00"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -1115,7 +1116,7 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
  const canCollect=collector.status==='available';
  const [range,setRange]=useState(()=>adsRange('yesterday')),[source,setSource]=useState('all'),[mode,setMode]=useState('campaign'),[query,setQuery]=useState('');
  const [conversionMode,setConversionMode]=useState('total');
- const [sort,setSort]=useState({key:'spend',direction:'desc'}),[showTab,setShowTab]=useState(false);
+ const [sort,setSort]=useState({key:'sales',direction:'desc'}),[showTab,setShowTab]=useState(false);
  const conversionLabel=conversionMode==='total'?'총':conversionMode==='indirect'?'간접':'직접';
  const conversionDescription=conversionMode==='total'?'총 전환 (직접+간접)':conversionLabel+' 전환';
  const [selectedPreset,setSelectedPreset]=useState('yesterday');
@@ -1200,7 +1201,7 @@ function App() {
     const CUR_Y=useMemo(()=>String(new Date().getFullYear()),[]);
     const CUR_M=useMemo(()=>String(new Date().getMonth()+1).padStart(2,'0'),[]);
     
-    const [view,setView]=useState("rocket"); // N배송은 더 이상 관리하지 않아 로켓배송 고정
+    const [view,setView]=useState(()=>{try{return sessionStorage.getItem('activeTab')==='ads'?'ads':'rocket';}catch{return 'rocket';}});
     const [adsDays,setAdsDays]=useState({}),[adsBusy,setAdsBusy]=useState(false),[adsStatus,setAdsStatus]=useState('');
     const [adConversionDays,setAdConversionDays]=useState({});
     const [adBillingDays,setAdBillingDays]=useState({});
@@ -2108,7 +2109,7 @@ const handleLogin = async ev => {
                 )}
 
             </header>
-            {view==='ads'&&<AdsPanel days={adsDays} conversionDays={adConversionDays} billingDays={adBillingDays} busy={adsBusy} status={adsStatus} job={adsJob} onSync={syncAds} onCancel={cancelAds} onReportImport={importConversionReport} onBillingImport={importBillingReport} failedFile={adsFailedFile} collector={adsCollector}/>}
+            <div className="dashboard-pane" hidden={view!=='ads'}><AdsPanel days={adsDays} conversionDays={adConversionDays} billingDays={adBillingDays} busy={adsBusy} status={adsStatus} job={adsJob} onSync={syncAds} onCancel={cancelAds} onReportImport={importConversionReport} onBillingImport={importBillingReport} failedFile={adsFailedFile} collector={adsCollector}/></div>
             {view!=='ads'&&adsStatus&&<p className="mx-10 mt-3 text-sm text-blue-700">{adsStatus}</p>}
 
             {notif && (
@@ -2124,8 +2125,7 @@ const handleLogin = async ev => {
 
             {}
             {/* ─── 로켓배송 탭 ─── */}
-            {view==="rocket"&&(
-                <main className="flex-grow w-full px-6 md:px-10 py-6 bg-slate-50 flex flex-col gap-6 animate-fade-in">
+            <main hidden={view!=='rocket'} className="dashboard-pane flex-grow w-full px-6 md:px-10 py-6 bg-slate-50 flex flex-col gap-6 animate-fade-in">
                     {inventoryLoad.phase==='cached'&&<div role="note" className="rounded-2xl border border-amber-200 bg-amber-50 text-amber-900 p-4 text-sm">{inventoryLoad.message}<button type="button" onClick={()=>window.location.reload()} className="ml-3 underline font-bold">다시 확인</button></div>}
                     {inventoryLoad.phase==='loading'||(inventoryLoad.phase==='error'&&!rDates.length)?<StockLoadNotice phase={inventoryLoad.phase} message={inventoryLoad.message} onRetry={()=>window.location.reload()}/>:rDates.length===0?(
                         <div className="flex flex-col items-center justify-center py-28 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
@@ -2238,8 +2238,7 @@ const handleLogin = async ev => {
                             </div>
                         </>
                     )}
-                </main>
-            )}
+            </main>
 
             {}
             {/* ─── N배송 (분석) 탭 ─── */}
@@ -2474,6 +2473,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
