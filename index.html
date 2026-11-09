@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v107)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v108)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -126,8 +126,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 107;
-const APP_UPDATED_AT = "2026-11-04 09:00"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 108;
+const APP_UPDATED_AT = "2026-11-09 08:56"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -298,15 +298,21 @@ const STOCK_MAPPING = [
  {name:"차트",option:"한글",vendorItemId:"4674125444"},{name:"차트",option:"숫자",vendorItemId:"4819885217"},{name:"차트",option:"잉글리쉬",vendorItemId:"4819885267"},{name:"차트",option:"육지동물",vendorItemId:"4819885539"},{name:"차트",option:"5종",vendorItemId:"4904509145"},{name:"차트",option:"3종",vendorItemId:"89132115519"},
  {name:"사운드북",option:"그린",vendorItemId:"87793988086"},{name:"사운드북",option:"옐로우",vendorItemId:"87793988095"},{name:"사운드북",option:"오렌지",vendorItemId:"87793988133"},{name:"사운드북",option:"3종",vendorItemId:"89132115547"},{name:"사운드북",option:"5종(쇼핑백)",vendorItemId:"90346226794"},
  {name:"동화툰 패키지",option:"1년",vendorItemId:"92082108245"},{name:"그리고지우고",option:"프리미엄",vendorItemId:"92602495405"},{name:"지우개",option:"4개",vendorItemId:"95141891887"},{name:"보드마카+지우개",option:"세트",vendorItemId:"95148334030"},{name:"샤워타월",option:"2개",vendorItemId:"96168931588"},
- {name:"빅북",option:"영어공부",vendorItemId:"75421956523"},{name:"빅북",option:"호기심",vendorItemId:"75421956574"},{name:"빅북",option:"3종",vendorItemId:"75478125673"}
+ {name:"빅북",option:"영어공부",vendorItemId:"75421956523"},{name:"빅북",option:"호기심",vendorItemId:"75421956574"},{name:"빅북",option:"3종",vendorItemId:"75478125673"},
+ {name:"클레이",option:"도구박스",skuId:"82477574",vendorItemId:"96217696289",sourceQuery:"도구"},
+ {name:"그리고지우고",option:"북(Book)",skuId:"82332941",vendorItemId:"96208604718",sourceQuery:"그리고"},
+ {name:"무한워크북보드",option:"패키지",skuId:"82329681",vendorItemId:"96208523283",sourceQuery:"무한"}
 ];
 const stockKey = (name, option) => `${String(name||"").trim()}\u0000${String(option||"").trim()}`;
 // Display labels come from Excel. Keep the collection source independently.
 const stockItemKey = item => JSON.stringify([String(item.skuId||'').trim(),String(item.name||'').trim(),String(item.option||'').trim()]);
 const directStockMapping = item => {
-    const saved=STOCK_MAPPING.find(m=>m.vendorItemId===item.stockLink?.vendorItemId);
+    const skuId=String(item.skuId||'').trim();
+    const bySku=STOCK_MAPPING.find(mapping=>mapping.skuId===skuId);
+    if(bySku)return bySku;
+    const saved=STOCK_MAPPING.find(mapping=>!mapping.skuId&&mapping.vendorItemId===item.stockLink?.vendorItemId);
     if(saved)return saved;
-    const exact=STOCK_MAPPING.find(m=>stockKey(m.name,m.option)===stockKey(item.name,item.option));
+    const exact=STOCK_MAPPING.find(mapping=>!mapping.skuId&&stockKey(mapping.name,mapping.option)===stockKey(item.name,item.option));
     if(exact)return exact;
     // Migrate the existing Fresh row, including the previously suggested hyphen label.
     if(String(item.skuId||'').trim()==='로켓프레시'||(item.name==='클레이'&&/^10종팩\s*-\s*$/.test(item.option||'')))
@@ -324,6 +330,11 @@ const rememberStockMapping = (item,mapping) => mapping?{...item,stockLink:{vendo
 
 const todayKst = () => new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const isStockNumber = v => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+const isTrackedStock = (item,latest) => {
+    if(item.excelActive===false)return false;
+    // Explicit SKU links also cover newly imported rows with an empty latest cell.
+    return isStockNumber(item.history?.[latest])||Boolean(directStockMapping(item)?.skuId);
+};
 const nextRunDate = (dates, today) => { if(!dates.includes(today)) return today; let n=2; while(dates.includes(`${today} (${n})`)) n++; return `${today} (${n})`; };
 
 
@@ -1630,7 +1641,7 @@ function App() {
     const stockQuery = q => q.sourceQuery || ({'와우펜북':'와우펜','키즈탭 프로':'키즈탭','동화툰 패키지':'동화툰','보드마카+지우개':'지우개'}[q.name]||q.name);
     const inventoryQueries = () => {
         const latest=rDates[rDates.length-1];const map=new Map(STOCK_MAPPING.map(m=>[stockKey(m.name,m.option),m]));const seen=new Set(),queries=[],problems=[];
-        const tracked=rItems.filter(item=>item.excelActive!==false&&isStockNumber(item.history?.[latest]));
+        const tracked=rItems.filter(item=>isTrackedStock(item,latest));
         tracked.forEach(item=>{const key=stockItemKey(item);if(seen.has(key)){problems.push('중복 상품: '+item.name+' / '+item.option);return;}seen.add(key);const m=resolveStockMapping(item,rItems);if(!m)problems.push('상품 연결 확인 필요: '+item.name+' / '+item.option);else queries.push({...m,sourceQuery:stockQuery(m),name:item.name,option:item.option,skuId:String(item.skuId||'')});});
         if(new Set(STOCK_MAPPING.map(m=>stockKey(m.name,m.option))).size!==STOCK_MAPPING.length)problems.push('내장 상품 목록 중복');
         return {latest,tracked,queries,problems};
@@ -1643,7 +1654,7 @@ function App() {
         const ref=db.doc('yomimon_dashboard/inventory_master');
         return db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw new Error('클라우드 원본을 찾지 못했습니다.');const d=await decodeInventoryDocument(snap.data());if(!Array.isArray(d.RD)||!Array.isArray(d.RI))throw new Error('원본 구조가 달라 저장하지 않았습니다.');
             const today=todayKst(),rd=[...d.RD];if(rd.some(x=>String(x).slice(0,10)>today))throw new Error('원본 날짜가 오늘보다 미래입니다. 날짜를 확인해주세요.');
-            const latest=rd[rd.length-1],active=d.RI.filter(x=>x.excelActive!==false&&isStockNumber(x.history?.[latest]));if(active.length!==queries.length)throw new Error('조회 중 상품 목록이 변경됐습니다. 새로고침 후 재시도하세요.');
+            const latest=rd[rd.length-1],active=d.RI.filter(item=>isTrackedStock(item,latest));if(active.length!==queries.length)throw new Error('조회 중 상품 목록이 변경됐습니다. 새로고침 후 재시도하세요.');
             const keys=new Set();active.forEach(x=>{const key=stockItemKey(x);if(keys.has(key)||!values.has(key))throw new Error('상품 목록이 변경되어 저장을 중단했습니다.');keys.add(key);const q=queries.find(q=>stockItemKey(q)===key);if(String(x.skuId||'')!==q.skuId)throw new Error('SKU가 변경됐습니다. 새로고침 후 확인해주세요.');});
             const runDate=nextRunDate(rd,today);const ri=d.RI.map(x=>rememberStockMapping({...x,history:{...(x.history||{}),[runDate]:values.has(stockItemKey(x))?values.get(stockItemKey(x)):'-'}},resolveStockMapping(x,d.RI)));
             await writeInventoryDocument(tx,ref,d,{RD:[...rd,runDate],RI:ri},true);return runDate;});
@@ -2473,6 +2484,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
