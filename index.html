@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v111)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v112)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -114,7 +114,7 @@
         .ads-day-step{display:inline-flex;align-items:center;gap:2px;border:1px solid #cbd5e1;border-radius:8px;padding:2px;background:white}.ads-day-step button{width:32px;height:36px;border:0;border-radius:5px;background:white;color:#334155;font-size:22px;font-weight:700;cursor:pointer}.ads-day-step button:hover{background:#e2e8f0}.ads-day-step button:disabled{color:#cbd5e1;background:#f8fafc;cursor:not-allowed}
 
         .stock-run-date{position:relative;display:inline-flex;align-items:center;justify-content:center;width:100%;border:0;padding:0;background:transparent;color:inherit;font:inherit;line-height:inherit;white-space:nowrap;cursor:pointer;border-radius:4px}
-        .stock-run-date:hover{background:#94a3b81a}.stock-run-date:focus-visible{outline:2px solid #64748b;outline-offset:4px}
+        .stock-toggle-hover{box-shadow:inset 0 0 0 9999px rgba(100,116,139,.13)}.stock-run-date:focus-visible{outline:2px solid #64748b;outline-offset:4px}
         .stock-run-dot{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:#94a3b8;border:1px solid #94a3b8;pointer-events:none}
         .stock-run-dot.is-open{background:transparent;border-color:#64748b}
         .dashboard-pane[hidden]{display:none!important}
@@ -130,8 +130,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 111;
-const APP_UPDATED_AT = "2026-11-11 17:46"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 112;
+const APP_UPDATED_AT = "2026-11-11 17:53"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -1430,6 +1430,7 @@ function App() {
     const dateDay=(value)=>{const match=String(value).match(/^(\d{4}-\d{2}-\d{2})(?: \((\d+)\))?$/);return match?match[1]:String(value);};
     const dateRun=(value)=>{const match=String(value).match(/^\d{4}-\d{2}-\d{2}(?: \((\d+)\))?$/);return match&&match[1]?Number(match[1]):1;};
     const [dailyRunOverrides,setDailyRunOverrides]=useState({});
+    const [hoveredStockDate,setHoveredStockDate]=useState(null);
     const dailyRunGroups=useMemo(()=>{
         const groups=new Map();
         for(const date of rDates){const day=dateDay(date),group=groups.get(day)||{count:0,first:date};group.count++;if(dateRun(date)<dateRun(group.first))group.first=date;groups.set(day,group);}
@@ -2261,7 +2262,7 @@ const handleLogin = async ev => {
                                         {!rShowZero&&<button onClick={()=>setRShowZero(true)} className="mt-3 text-xs text-blue-600 underline font-bold cursor-pointer">→ 재고 0개 상품도 표시하기</button>}
                                     </div>
                                 ):(
-                                    <table className="rocket-grid text-left border-collapse" style={{tableLayout:"fixed",width:`${380+Math.max(1,visRD.length)*80}px`,minWidth:`${380+Math.max(1,visRD.length)*80}px`}}>
+                                    <table className="rocket-grid text-left border-collapse" onMouseOver={event=>setHoveredStockDate(event.target.closest("[data-stock-toggle]")?.getAttribute("data-stock-toggle")||null)} onMouseLeave={()=>setHoveredStockDate(null)} style={{tableLayout:"fixed",width:`${380+Math.max(1,visRD.length)*80}px`,minWidth:`${380+Math.max(1,visRD.length)*80}px`}}>
                                         <colgroup>
                                             <col style={{width:"var(--col-name)"}}/><col style={{width:"var(--col-opt)"}}/><col style={{width:"var(--col-sku)"}}/>
                                             {visRD.length===0&&<col style={{width:"150px"}}/>}
@@ -2271,7 +2272,7 @@ const handleLogin = async ev => {
                                             <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
                                                 <th className="py-3 px-5 fc1 bg-slate-100">상품명</th><th className="py-3 px-5 fc2 bg-slate-100">구성</th><th className="py-3 px-5 fc3 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)]">SKU ID</th>
                                                 {visRD.length===0&&<th className="py-3 px-5">해당 기간 데이터 없음</th>}
-                                                {visRD.map((d,i)=><th key={d} scope="col" onClick={dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?()=>toggleDailyRun(dateDay(d)):undefined} className={`py-1 px-2 text-center sticky top-0 z-20 ${dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?"cursor-pointer ":""}${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><div className="stock-column-head">{isAdditionalStockRun(d)?<button type="button" className="stock-column-delete" aria-label={d+' 재고 기록 삭제'} title={d+' 기록 삭제'} disabled={excelBusy||adsBusy||stockRun.phase==='loading'||stockRun.phase==='login'} onClick={()=>deleteStockColumn(d)}>×</button>:<span aria-hidden="true" style={{height:13}}/>}<StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/><span className="stock-column-time" aria-hidden={!isAdditionalStockRun(d)||!stockRunTime(stockRunTimes[d])} title={isAdditionalStockRun(d)&&stockRunTime(stockRunTimes[d])?'수집 완료 시각':undefined}>{isAdditionalStockRun(d)?stockRunTime(stockRunTimes[d]):null}</span></div></th>)}
+                                                {visRD.map((d,i)=><th key={d} scope="col" data-stock-toggle={dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?d:undefined} onClick={dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?()=>toggleDailyRun(dateDay(d)):undefined} className={`py-1 px-2 text-center sticky top-0 z-20 ${hoveredStockDate===d?"stock-toggle-hover ":""}${dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?"cursor-pointer ":""}${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><div className="stock-column-head">{isAdditionalStockRun(d)?<button type="button" className="stock-column-delete" aria-label={d+' 재고 기록 삭제'} title={d+' 기록 삭제'} disabled={excelBusy||adsBusy||stockRun.phase==='loading'||stockRun.phase==='login'} onClick={()=>deleteStockColumn(d)}>×</button>:<span aria-hidden="true" style={{height:13}}/>}<StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/><span className="stock-column-time" aria-hidden={!isAdditionalStockRun(d)||!stockRunTime(stockRunTimes[d])} title={isAdditionalStockRun(d)&&stockRunTime(stockRunTimes[d])?'수집 완료 시각':undefined}>{isAdditionalStockRun(d)?stockRunTime(stockRunTimes[d]):null}</span></div></th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="text-sm">
@@ -2294,7 +2295,7 @@ const handleLogin = async ev => {
                                                             const v=item.history[d];const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
                                                             const wkStart=isWeekStartDate(rDates,rDates.indexOf(d));
                                                             return(
-                                                                <td key={i} onClick={dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?()=>toggleDailyRun(dateDay(d)):undefined} style={{...displayCellStyle(item,0,d),...(dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?{cursor:"pointer"}:{}),...(wkStart?{backgroundColor:"#FFF1DF",color:"#C06014"}:{})}} className={`py-4 px-4 text-center font-bold ${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
+                                                                <td key={i} data-stock-toggle={dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?d:undefined} onClick={dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?()=>toggleDailyRun(dateDay(d)):undefined} style={{...displayCellStyle(item,0,d),...(dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?{cursor:"pointer"}:{}),...(wkStart?{backgroundColor:"#FFF1DF",color:"#C06014"}:{})}} className={`py-4 px-4 text-center font-bold ${hoveredStockDate===d?"stock-toggle-hover ":""}${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
                                                                     {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
                                                                 </td>
                                                             );
