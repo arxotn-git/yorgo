@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v110)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v111)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -130,8 +130,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 110;
-const APP_UPDATED_AT = "2026-11-11 12:18"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 111;
+const APP_UPDATED_AT = "2026-11-11 17:46"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -1210,7 +1210,7 @@ function AdsPanel({days,conversionDays,billingDays,busy,status,job,onSync,onCanc
 function StockRunHeading({date,info,expanded,onToggle}){
  if(!info||info.count<2||info.first!==date)return <span>{date.slice(5)}</span>;
  const label=date.slice(0,10)+' 추가 기록 '+(info.count-1)+'개 '+(expanded?'접기':'펼치기');
- return <button type="button" className="stock-run-date" aria-expanded={expanded} aria-label={label} title={label} onClick={onToggle}><span>{date.slice(5)}</span><span aria-hidden="true" className={`stock-run-dot${expanded?' is-open':''}`}/></button>;
+ return <button type="button" className="stock-run-date" aria-expanded={expanded} aria-label={label} title={label} onClick={event=>{event.stopPropagation();onToggle();}}><span>{date.slice(5)}</span><span aria-hidden="true" className={`stock-run-dot${expanded?' is-open':''}`}/></button>;
 }
 
 const stockAutoMonth=(dates,mode,today=todayKst())=>mode==='MONTH'?null:(dates.map(date=>String(date).slice(0,10)).filter(date=>/^\d{4}-\d{2}-\d{2}$/.test(date)).sort().at(-1)||today).slice(0,7);
@@ -2271,7 +2271,7 @@ const handleLogin = async ev => {
                                             <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
                                                 <th className="py-3 px-5 fc1 bg-slate-100">상품명</th><th className="py-3 px-5 fc2 bg-slate-100">구성</th><th className="py-3 px-5 fc3 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)]">SKU ID</th>
                                                 {visRD.length===0&&<th className="py-3 px-5">해당 기간 데이터 없음</th>}
-                                                {visRD.map((d,i)=><th key={d} scope="col" className={`py-1 px-2 text-center sticky top-0 z-20 ${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><div className="stock-column-head">{isAdditionalStockRun(d)?<button type="button" className="stock-column-delete" aria-label={d+' 재고 기록 삭제'} title={d+' 기록 삭제'} disabled={excelBusy||adsBusy||stockRun.phase==='loading'||stockRun.phase==='login'} onClick={()=>deleteStockColumn(d)}>×</button>:<span aria-hidden="true" style={{height:13}}/>}<StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/><span className="stock-column-time" aria-hidden={!isAdditionalStockRun(d)||!stockRunTime(stockRunTimes[d])} title={isAdditionalStockRun(d)&&stockRunTime(stockRunTimes[d])?'수집 완료 시각':undefined}>{isAdditionalStockRun(d)?stockRunTime(stockRunTimes[d]):null}</span></div></th>)}
+                                                {visRD.map((d,i)=><th key={d} scope="col" onClick={dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?()=>toggleDailyRun(dateDay(d)):undefined} className={`py-1 px-2 text-center sticky top-0 z-20 ${dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?"cursor-pointer ":""}${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><div className="stock-column-head">{isAdditionalStockRun(d)?<button type="button" className="stock-column-delete" aria-label={d+' 재고 기록 삭제'} title={d+' 기록 삭제'} disabled={excelBusy||adsBusy||stockRun.phase==='loading'||stockRun.phase==='login'} onClick={()=>deleteStockColumn(d)}>×</button>:<span aria-hidden="true" style={{height:13}}/>}<StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/><span className="stock-column-time" aria-hidden={!isAdditionalStockRun(d)||!stockRunTime(stockRunTimes[d])} title={isAdditionalStockRun(d)&&stockRunTime(stockRunTimes[d])?'수집 완료 시각':undefined}>{isAdditionalStockRun(d)?stockRunTime(stockRunTimes[d]):null}</span></div></th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="text-sm">
@@ -2294,7 +2294,7 @@ const handleLogin = async ev => {
                                                             const v=item.history[d];const num=(v!=null&&v!==""&&v!=="-")?Number(v):null;
                                                             const wkStart=isWeekStartDate(rDates,rDates.indexOf(d));
                                                             return(
-                                                                <td key={i} style={{...displayCellStyle(item,0,d),...(wkStart?{backgroundColor:"#FFF1DF",color:"#C06014"}:{})}} className={`py-4 px-4 text-center font-bold ${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
+                                                                <td key={i} onClick={dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?()=>toggleDailyRun(dateDay(d)):undefined} style={{...displayCellStyle(item,0,d),...(dailyRunGroups.get(dateDay(d))?.count>1&&dailyRunGroups.get(dateDay(d))?.first===d?{cursor:"pointer"}:{}),...(wkStart?{backgroundColor:"#FFF1DF",color:"#C06014"}:{})}} className={`py-4 px-4 text-center font-bold ${bgNew} ${wkStart?"text-orange-600":num===null?"text-slate-300":num===0?"text-red-500":"text-slate-700"}`}>
                                                                     {num!==null?(isNaN(num)?String(v):num.toLocaleString()):"-"}
                                                                 </td>
                                                             );
