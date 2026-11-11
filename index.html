@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v108)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v109)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -118,6 +118,10 @@
         .stock-run-dot{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:#94a3b8;border:1px solid #94a3b8;pointer-events:none}
         .stock-run-dot.is-open{background:transparent;border-color:#64748b}
         .dashboard-pane[hidden]{display:none!important}
+        .stock-column-head{display:flex;position:relative;flex-direction:column;align-items:center;justify-content:center;min-height:37px;gap:1px}
+        .stock-column-delete{height:13px;width:18px;line-height:12px;border:0;background:transparent;color:#a8b2c1;font-size:14px;cursor:pointer;border-radius:3px}
+        .stock-column-delete:hover{background:#fee2e2;color:#b91c1c}.stock-column-delete:disabled{opacity:.35;cursor:not-allowed}
+        .stock-column-time{margin-top:5px;font-size:10px;font-weight:400;line-height:11px;color:#94a3b8}
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -126,8 +130,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 108;
-const APP_UPDATED_AT = "2026-11-09 08:56"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 109;
+const APP_UPDATED_AT = "2026-11-11 12:09"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -185,9 +189,9 @@ const encodeInventoryDocument = async data => {
     if(new Blob([JSON.stringify({...metadata,packedInventory})]).size>900000)throw new Error('압축 후에도 저장 공간이 부족합니다. 원본과 기존 이력은 그대로이며, 분리 저장이 필요합니다.');
     return packedInventory;
 };
-const writeInventoryDocument = async (tx,ref,data,patch,rocket=false) => {
-    const packedInventory=await encodeInventoryDocument({...data,...patch});
-    const update={packedInventory,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+const writeInventoryDocument = async (tx,ref,data,patch,rocket=false,metadataPatch={}) => {
+    const packedInventory=await encodeInventoryDocument({...data,...patch,...metadataPatch});
+    const update={...metadataPatch,packedInventory,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
     INVENTORY_FIELDS.forEach(k=>{update[k]=firebase.firestore.FieldValue.delete();});
     if(rocket)update.rocketUpdatedAt=firebase.firestore.FieldValue.serverTimestamp();
     tx.update(ref,update);
@@ -335,7 +339,21 @@ const isTrackedStock = (item,latest) => {
     // Explicit SKU links also cover newly imported rows with an empty latest cell.
     return isStockNumber(item.history?.[latest])||Boolean(directStockMapping(item)?.skuId);
 };
-const nextRunDate = (dates, today) => { if(!dates.includes(today)) return today; let n=2; while(dates.includes(`${today} (${n})`)) n++; return `${today} (${n})`; };
+const nextRunDate = (dates, today) => {
+    const runs=dates.filter(date=>String(date).slice(0,10)===today);
+    if(!runs.length)return today;
+    const maxRun=Math.max(...runs.map(date=>Number(String(date).match(/\((\d+)\)$/)?.[1]||1)));
+    return `${today} (${maxRun+1})`;
+};
+const stockRunTime = value => {
+    const date=new Date(value);
+    if(!value||!Number.isFinite(date.getTime()))return null;
+    return new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(date);
+};
+const stockColumnSignature = (date,items,times) => JSON.stringify({
+    time:times?.[date]||null,
+    rows:items.map(item=>[stockItemKey(item),Object.prototype.hasOwnProperty.call(item.history||{},date),item.history?.[date]??null,item.excelDateStyles?.[date]??null]).sort((a,b)=>a[0].localeCompare(b[0]))
+});
 
 
 const INIT_INC = [
@@ -1241,6 +1259,7 @@ function App() {
     const [dbStock,setDbStock]=useState({});
     const [dbInc,setDbInc]=useState([]);
     const [inventoryLoad,setInventoryLoad]=useState({phase:'loading',message:'저장된 최신 자료를 확인하고 있습니다.'});
+    const [stockRunTimes,setStockRunTimes]=useState({});
     const [rDates,setRDates]=useState([]);
     const [rItems,setRItems]=useState([]);
     const [aOrder,setAOrder]=useState([]); 
@@ -1295,6 +1314,7 @@ function App() {
                 if(d.DATES?.length)setDbDates(d.DATES);
                 if(d.STOCK&&Object.keys(d.STOCK).length)setDbStock(mergeStockHistory(d.STOCK));
                 if(d.INC)setDbInc(d.INC);
+                setStockRunTimes(d.stockRunTimes||{});
                 if(d.RD)setRDates(d.RD);
                 if(d.RI)setRItems(d.RI);
                 if(d.AORDER)setAOrder(d.AORDER);
@@ -1323,6 +1343,7 @@ function App() {
                 if (d.DATES?.length) setDbDates(d.DATES);
                 if (d.STOCK && Object.keys(d.STOCK).length) setDbStock(mergeStockHistory(d.STOCK));
                 if (d.INC) setDbInc(d.INC);
+                setStockRunTimes(d.stockRunTimes||{});
                 if (d.RD) setRDates(d.RD);
                 if (d.RI) setRItems(d.RI);
                 if (d.AORDER?.length) setAOrder(d.AORDER);
@@ -1657,7 +1678,40 @@ function App() {
             const latest=rd[rd.length-1],active=d.RI.filter(item=>isTrackedStock(item,latest));if(active.length!==queries.length)throw new Error('조회 중 상품 목록이 변경됐습니다. 새로고침 후 재시도하세요.');
             const keys=new Set();active.forEach(x=>{const key=stockItemKey(x);if(keys.has(key)||!values.has(key))throw new Error('상품 목록이 변경되어 저장을 중단했습니다.');keys.add(key);const q=queries.find(q=>stockItemKey(q)===key);if(String(x.skuId||'')!==q.skuId)throw new Error('SKU가 변경됐습니다. 새로고침 후 확인해주세요.');});
             const runDate=nextRunDate(rd,today);const ri=d.RI.map(x=>rememberStockMapping({...x,history:{...(x.history||{}),[runDate]:values.has(stockItemKey(x))?values.get(stockItemKey(x)):'-'}},resolveStockMapping(x,d.RI)));
-            await writeInventoryDocument(tx,ref,d,{RD:[...rd,runDate],RI:ri},true);return runDate;});
+            const times={...(d.stockRunTimes||{}),[runDate]:new Date().toISOString()};
+            await writeInventoryDocument(tx,ref,d,{RD:sortInventoryDates([...rd,runDate]),RI:ri},true,{stockRunTimes:times});return runDate;});
+    };
+    const deleteStockColumn = async date => {
+        if(stockBusyRef.current||excelBusyRef.current||adsBusyRef.current)return;
+        if(!window.confirm(date+' 재고 기록을 삭제하시겠습니까?\n\n해당 열의 모든 상품 수량이 삭제되며, 공유 화면과 엑셀에도 반영됩니다.'))return;
+        const expected=stockColumnSignature(date,rItems,stockRunTimes);
+        excelBusyRef.current=true;setExcelBusy(true);
+        try{
+            if(!useFirebase)throw new Error('공유 저장소 연결을 확인해주세요.');
+            const ref=db.doc('yomimon_dashboard/inventory_master');
+            await db.runTransaction(async tx=>{
+                const snapshot=await tx.get(ref);
+                if(!snapshot.exists)throw new Error('공유 재고 원본이 없습니다.');
+                const data=await decodeInventoryDocument(snapshot.data());
+                if(!Array.isArray(data.RD)||!Array.isArray(data.RI)||!data.RD.includes(date))throw new Error('이미 삭제된 기록입니다. 새로고침 후 확인해주세요.');
+                if(stockColumnSignature(date,data.RI,data.stockRunTimes)!==expected)throw new Error('다른 곳에서 해당 기록을 변경했습니다. 새로고침 후 다시 확인해주세요.');
+                const items=data.RI.map(item=>{
+                    const history={...(item.history||{})};delete history[date];
+                    const next={...item,history};
+                    if(item.excelDateStyles){next.excelDateStyles={...item.excelDateStyles};delete next.excelDateStyles[date];if(!Object.keys(next.excelDateStyles).length)delete next.excelDateStyles;}
+                    return next;
+                });
+                const times={...(data.stockRunTimes||{})};delete times[date];
+                const patch={RD:data.RD.filter(value=>value!==date),RI:items};
+                if(data.EXCEL_LAYOUT?.rocket?.dateWidths){
+                    const widths={...data.EXCEL_LAYOUT.rocket.dateWidths};delete widths[date];
+                    patch.EXCEL_LAYOUT={...data.EXCEL_LAYOUT,rocket:{...data.EXCEL_LAYOUT.rocket,dateWidths:widths}};
+                }
+                await writeInventoryDocument(tx,ref,data,patch,false,{stockRunTimes:times});
+            });
+            notify(date+' 재고 기록을 삭제했습니다.');
+        }catch(error){notify('재고 기록 삭제 실패: '+String(error.message||error),'err');}
+        finally{excelBusyRef.current=false;setExcelBusy(false);}
     };
     const [adsFailedFile,setAdsFailedFile]=useState(null);
     useEffect(()=>()=>{if(adsFailedFile?.url)URL.revokeObjectURL(adsFailedFile.url);},[adsFailedFile]);
@@ -2212,7 +2266,7 @@ const handleLogin = async ev => {
                                             <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
                                                 <th className="py-3 px-5 fc1 bg-slate-100">상품명</th><th className="py-3 px-5 fc2 bg-slate-100">구성</th><th className="py-3 px-5 fc3 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)]">SKU ID</th>
                                                 {visRD.length===0&&<th className="py-3 px-5">해당 기간 데이터 없음</th>}
-                                                {visRD.map((d,i)=><th key={d} scope="col" className={`py-3 px-2 text-center sticky top-0 z-20 ${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/></th>)}
+                                                {visRD.map((d,i)=><th key={d} scope="col" className={`py-1 px-2 text-center sticky top-0 z-20 ${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><div className="stock-column-head"><button type="button" className="stock-column-delete" aria-label={d+' 재고 기록 삭제'} title={d+' 기록 삭제'} disabled={excelBusy||adsBusy||stockRun.phase==='loading'||stockRun.phase==='login'} onClick={()=>deleteStockColumn(d)}>×</button><StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/>{/\(\d+\)$/.test(d)&&<span className="stock-column-time" title={stockRunTime(stockRunTimes[d])?'수집 완료 시각':'기존 기록의 수집 시각은 저장되어 있지 않습니다.'}>{stockRunTime(stockRunTimes[d])||'—'}</span>}</div></th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="text-sm">
@@ -2484,6 +2538,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
