@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v109)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v110)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -121,7 +121,7 @@
         .stock-column-head{display:flex;position:relative;flex-direction:column;align-items:center;justify-content:center;min-height:37px;gap:1px}
         .stock-column-delete{height:13px;width:18px;line-height:12px;border:0;background:transparent;color:#a8b2c1;font-size:14px;cursor:pointer;border-radius:3px}
         .stock-column-delete:hover{background:#fee2e2;color:#b91c1c}.stock-column-delete:disabled{opacity:.35;cursor:not-allowed}
-        .stock-column-time{margin-top:5px;font-size:10px;font-weight:400;line-height:11px;color:#94a3b8}
+        .stock-column-time{min-height:11px;margin-top:5px;font-size:10px;font-weight:400;line-height:11px;color:#94a3b8}
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -130,8 +130,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 109;
-const APP_UPDATED_AT = "2026-11-11 12:09"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 110;
+const APP_UPDATED_AT = "2026-11-11 12:18"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -344,6 +344,10 @@ const nextRunDate = (dates, today) => {
     if(!runs.length)return today;
     const maxRun=Math.max(...runs.map(date=>Number(String(date).match(/\((\d+)\)$/)?.[1]||1)));
     return `${today} (${maxRun+1})`;
+};
+const isAdditionalStockRun = date => {
+    const match=String(date).match(/^\d{4}-\d{2}-\d{2} \((\d+)\)$/);
+    return Boolean(match&&Number(match[1])>=2);
 };
 const stockRunTime = value => {
     const date=new Date(value);
@@ -1682,6 +1686,7 @@ function App() {
             await writeInventoryDocument(tx,ref,d,{RD:sortInventoryDates([...rd,runDate]),RI:ri},true,{stockRunTimes:times});return runDate;});
     };
     const deleteStockColumn = async date => {
+        if(!isAdditionalStockRun(date))return;
         if(stockBusyRef.current||excelBusyRef.current||adsBusyRef.current)return;
         if(!window.confirm(date+' 재고 기록을 삭제하시겠습니까?\n\n해당 열의 모든 상품 수량이 삭제되며, 공유 화면과 엑셀에도 반영됩니다.'))return;
         const expected=stockColumnSignature(date,rItems,stockRunTimes);
@@ -2266,7 +2271,7 @@ const handleLogin = async ev => {
                                             <tr className="text-slate-600 text-xs font-bold uppercase whitespace-nowrap border-b-2 border-slate-200">
                                                 <th className="py-3 px-5 fc1 bg-slate-100">상품명</th><th className="py-3 px-5 fc2 bg-slate-100">구성</th><th className="py-3 px-5 fc3 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.2)]">SKU ID</th>
                                                 {visRD.length===0&&<th className="py-3 px-5">해당 기간 데이터 없음</th>}
-                                                {visRD.map((d,i)=><th key={d} scope="col" className={`py-1 px-2 text-center sticky top-0 z-20 ${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><div className="stock-column-head"><button type="button" className="stock-column-delete" aria-label={d+' 재고 기록 삭제'} title={d+' 기록 삭제'} disabled={excelBusy||adsBusy||stockRun.phase==='loading'||stockRun.phase==='login'} onClick={()=>deleteStockColumn(d)}>×</button><StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/>{/\(\d+\)$/.test(d)&&<span className="stock-column-time" title={stockRunTime(stockRunTimes[d])?'수집 완료 시각':'기존 기록의 수집 시각은 저장되어 있지 않습니다.'}>{stockRunTime(stockRunTimes[d])||'—'}</span>}</div></th>)}
+                                                {visRD.map((d,i)=><th key={d} scope="col" className={`py-1 px-2 text-center sticky top-0 z-20 ${isWeekStartDate(rDates,rDates.indexOf(d))?"bg-orange-100 text-orange-700":"bg-slate-100"}`}><div className="stock-column-head">{isAdditionalStockRun(d)?<button type="button" className="stock-column-delete" aria-label={d+' 재고 기록 삭제'} title={d+' 기록 삭제'} disabled={excelBusy||adsBusy||stockRun.phase==='loading'||stockRun.phase==='login'} onClick={()=>deleteStockColumn(d)}>×</button>:<span aria-hidden="true" style={{height:13}}/>}<StockRunHeading date={d} info={dailyRunGroups.get(dateDay(d))} expanded={isDailyRunExpanded(dateDay(d))} onToggle={()=>toggleDailyRun(dateDay(d))}/><span className="stock-column-time" aria-hidden={!isAdditionalStockRun(d)||!stockRunTime(stockRunTimes[d])} title={isAdditionalStockRun(d)&&stockRunTime(stockRunTimes[d])?'수집 완료 시각':undefined}>{isAdditionalStockRun(d)?stockRunTime(stockRunTimes[d]):null}</span></div></th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="text-sm">
@@ -2538,6 +2543,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
 </html>
+
 
 
 
