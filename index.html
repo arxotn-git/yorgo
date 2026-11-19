@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v114)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v115)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -130,8 +130,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 114;
-const APP_UPDATED_AT = "2026-11-12 09:05"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 115;
+const APP_UPDATED_AT = "2026-11-19 22:58"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -294,6 +294,7 @@ const isWeekStartDate = (dates, i) => {
 // Chrome extension inventory bridge. IDs are vendorItemIds, never credentials.
 const YORGO_STOCK_SOURCE = "yorgo-dashboard";
 const STOCK_MAPPING = [
+ {name:"멀티보드",option:"-",skuId:"38656128",vendorItemId:"87084778133",sourceQuery:"멀티"},
  {name:"플레이돌",option:"기본형",vendorItemId:"91334053184"},{name:"플레이돌 맥스",option:"프리미엄",vendorItemId:"95409717944"},
  {name:"키즈탭 프로",option:"단품",vendorItemId:"89581544062"},{name:"키즈탭 프로",option:"디즈니",vendorItemId:"95535900326"},
  {name:"클레이",option:"10종팩",vendorItemId:"91510383676"},{name:"클레이",option:"기프트세트",vendorItemId:"91547708125"},{name:"클레이",option:"10종팩-프레시",vendorItemId:"92213410006",deliveryType:"로켓프레시"},{name:"클레이",option:"15종팩",vendorItemId:"94489577117"},
