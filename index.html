@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>로켓배송 재고 현황 (v115)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
+    <title>로켓배송 재고 현황 (v116)</title><!-- APP_VERSION과 함께 수동 갱신 필요 -->
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Inter & Noto Sans Font -->
@@ -130,8 +130,8 @@
 <script type="text/babel" data-presets="react-classic,env">
 const { useState, useMemo, useEffect, useRef } = React;
 
-const APP_VERSION = 115;
-const APP_UPDATED_AT = "2026-11-19 22:58"; // 원본 엑셀 저장 용량 개선 V01
+const APP_VERSION = 116;
+const APP_UPDATED_AT = "2026-11-27 12:54"; // 원본 엑셀 저장 용량 개선 V01
 const LS_KEY = "argo_dashboard_master_v63"; // Preserve existing offline cache across app upgrades.
 
 const firebaseConfig = {
@@ -1466,7 +1466,7 @@ function App() {
 
     const filtRI=useMemo(()=>{
         return rItems.filter(item=>{
-            if(item.excelActive===false)return false;
+            if(item.excelActive===false||item.excelRowHidden===true)return false;
             if(srch){
                 const term = srch.toLowerCase();
                 const mName = String(item.name || "").toLowerCase().includes(term);
